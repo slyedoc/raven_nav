@@ -1,0 +1,33 @@
+[package]
+name = "raven"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = [ 
+    #"bevy/wayland" # TODO: remove before making public
+] 
+debug_draw = [
+    "bevy/bevy_gizmos",
+    "bevy/bevy_render",    
+]
+
+[dependencies]
+bevy = "0.16"
+avian3d = "0.3"
+smallvec = { version = "1.11", default-features = false }
+
+[dev-dependencies]
+bevy = "0.16"
+avian3d = "0.3"
+bevy_enhanced_input = "0.11"
+sly_editor = { git = "https://github.com/slyedoc/sly_editor.git", features = ["avian3d"]}
+#sly_editor = { path = "../sly_editor", features = ["avian3d"]}
+
+[[example]]
+name = "simple"
+required-features = ["debug_draw"]
+
+[[example]]
+name = "heightfield"
+required-features = ["debug_draw"]
