@@ -1,9 +1,9 @@
 use crate::{
-    heightfields::{OpenSpan, OpenTile},
     Area,
+    heightfields::{OpenSpan, OpenTile},
 };
 
-use super::{get_neighbour_index, NavMeshSettings};
+use super::{NavMeshSettings, get_neighbour_index};
 
 #[derive(Default, Clone, Copy)]
 struct LevelStackEntry {

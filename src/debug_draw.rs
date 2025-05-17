@@ -1,9 +1,9 @@
 //! Module for debug draws.
 use bevy::{
-    gizmos::{config::GizmoConfigGroup, AppGizmoBuilder},
+    gizmos::{AppGizmoBuilder, config::GizmoConfigGroup},
     prelude::{
-        any_with_component, App, Color, Commands, Component, Entity, Gizmos, IntoScheduleConfigs,
-        Plugin, Query, ReflectResource, Res, Resource, Update, Vec3,
+        App, Color, Commands, Component, Entity, Gizmos, IntoScheduleConfigs, Plugin, Query,
+        ReflectResource, Res, Resource, Update, Vec3, any_with_component,
     },
     reflect::Reflect,
     time::{Time, Timer},

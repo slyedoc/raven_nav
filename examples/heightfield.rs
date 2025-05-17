@@ -2,36 +2,41 @@ mod common; // helper functions
 use common::*;
 
 use avian3d::prelude::*;
-use bevy::{asset::RenderAssetUsages, input::common_conditions::input_toggle_active, prelude::*, render::mesh::{Indices, PrimitiveTopology}};
+use bevy::{
+    asset::RenderAssetUsages,
+    input::common_conditions::input_toggle_active,
+    prelude::*,
+    render::mesh::{Indices, PrimitiveTopology},
+};
 use raven::prelude::*;
 
 fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins.set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "Raven: Simple".to_string(),
-                        ..default()
-                    }),
+                primary_window: Some(Window {
+                    title: "Raven: Simple".to_string(),
                     ..default()
                 }),
-            
+                ..default()
+            }),
             // utility
             ExampleCommonPlugin,
-
             // physics
             PhysicsPlugins::default(),
             RavenPlugin {
-                 settings: NavMeshSettings::from_agent_and_bounds(0.5, 1.9, 250.0, -30.0)
-                 .with_traversible_slope(30.0_f32.to_radians()),
+                settings: NavMeshSettings::from_agent_and_bounds(0.5, 1.9, 250.0, -30.0)
+                    .with_traversible_slope(30.0_f32.to_radians()),
             },
             RavenDebugPlugin,
         ))
         .add_systems(Startup, setup)
-        .add_systems(Update, toggle_nav_mesh_debug_draw.run_if(input_toggle_active(true, KeyCode::KeyM)))
+        .add_systems(
+            Update,
+            toggle_nav_mesh_debug_draw.run_if(input_toggle_active(true, KeyCode::KeyM)),
+        )
         .run();
 }
-
 
 fn setup(
     mut commands: Commands,
@@ -46,7 +51,7 @@ fn setup(
             hdr: true,
             ..default()
         },
-        Transform::from_xyz(0.0, 2.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(0.0, 20.0, -40.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
     commands.spawn((
@@ -59,7 +64,7 @@ fn setup(
     ));
 
     // heightfield
-    let resolution = 150;  
+    let resolution = 150;
     let oct = 10.0;
     let height_scale = 5.0;
     let scale = Vec3::new(resolution as f32, height_scale, resolution as f32);
@@ -70,8 +75,8 @@ fn setup(
             heightfield[x][y] = (x as f32 / oct).sin() + (y as f32 / oct).cos();
         }
     }
-        
-    commands.spawn((        
+
+    commands.spawn((
         Name::new("Heightfield"),
         Transform::IDENTITY,
         Mesh3d(meshes.add(generate_mesh_from_heightfield(&heightfield, scale, true))),
@@ -107,9 +112,13 @@ fn setup(
     ));
 }
 
-/// Generates a mesh from a heightfield 
+/// Generates a mesh from a heightfield
 /// Assumes the heightfield is square
-pub fn generate_mesh_from_heightfield(heightfield: &Vec<Vec<f32>>, scale: Vec3, smooth: bool) -> Mesh {
+pub fn generate_mesh_from_heightfield(
+    heightfield: &Vec<Vec<f32>>,
+    scale: Vec3,
+    smooth: bool,
+) -> Mesh {
     let size = heightfield.len();
 
     let num_vertices = size * size;
@@ -152,10 +161,12 @@ pub fn generate_mesh_from_heightfield(heightfield: &Vec<Vec<f32>>, scale: Vec3, 
     }
 
     // build our mesh
-    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    );
     mesh.insert_indices(Indices::U32(indices));
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
 
     // compute normals
     match smooth {
@@ -176,9 +187,11 @@ pub fn generate_mesh_from_heightfield(heightfield: &Vec<Vec<f32>>, scale: Vec3, 
                     }
                 }
             }
+            mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
             mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
         }
-        false => {            
+        false => {
+            mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
             mesh.duplicate_vertices();
             mesh.compute_flat_normals();
         }
@@ -187,9 +200,6 @@ pub fn generate_mesh_from_heightfield(heightfield: &Vec<Vec<f32>>, scale: Vec3, 
     mesh
 }
 
-
-fn toggle_nav_mesh_debug_draw(
-    mut show_navmesh: ResMut<DrawNavMesh>,
-) {
+fn toggle_nav_mesh_debug_draw(mut show_navmesh: ResMut<DrawNavMesh>) {
     show_navmesh.0 = !show_navmesh.0;
 }

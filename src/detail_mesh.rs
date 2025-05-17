@@ -8,10 +8,9 @@ use bevy::{
 use bevy::log::info_span;
 
 use crate::{
-    get_neighbour_index,
+    NavMeshSettings, get_neighbour_index,
     heightfields::OpenTile,
     mesher::{PolyMesh, VERTICES_IN_TRIANGLE},
-    NavMeshSettings,
 };
 
 #[derive(Debug)]
@@ -689,11 +688,7 @@ fn dist_to_poly(poly: &[U16Vec3], p: Vec3) -> f32 {
         dmin = dmin.min(distance_pt_seg_2d(p, vj, vi));
     }
 
-    if c {
-        -dmin
-    } else {
-        dmin
-    }
+    if c { -dmin } else { dmin }
 }
 
 // Computes the minimum distance from point `p` to the triangle mesh defined by `verts` and `tris`.

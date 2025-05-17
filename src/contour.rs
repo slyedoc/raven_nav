@@ -6,13 +6,12 @@ use bevy::{
 };
 
 use crate::{
-    get_neighbour_index,
+    Area, get_neighbour_index,
     heightfields::{OpenSpan, OpenTile},
-    Area,
 };
 
 use super::math::{in_cone, intersect};
-use super::{NavMeshSettings, FLAG_BORDER_VERTEX, MASK_CONTOUR_REGION};
+use super::{FLAG_BORDER_VERTEX, MASK_CONTOUR_REGION, NavMeshSettings};
 
 #[derive(Default, Clone, Debug)]
 pub struct Contour {
@@ -41,7 +40,10 @@ struct ContourRegion {
     holes: Vec<ContourHole>,
 }
 
-pub(crate) fn build_contours(open_tile: &OpenTile, nav_mesh_settings: &NavMeshSettings) -> ContourSet {
+pub(crate) fn build_contours(
+    open_tile: &OpenTile,
+    nav_mesh_settings: &NavMeshSettings,
+) -> ContourSet {
     let max_contours = open_tile.max_regions.max(8);
     let mut contour_set = ContourSet {
         contours: Vec::with_capacity(max_contours.into()),

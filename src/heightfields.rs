@@ -1,12 +1,12 @@
 use std::{cmp::Ordering, ops::Div, sync::Arc};
 
-use bevy::{math::Vec3A, prelude::*};
 use avian3d::parry::shape::HeightField;
+use bevy::{math::Vec3A, prelude::*};
 use smallvec::SmallVec;
 
-use crate::{conversion::Triangles, Area};
+use crate::{Area, conversion::Triangles};
 
-use super::{get_neighbour_index, NavMeshSettings};
+use super::{NavMeshSettings, get_neighbour_index};
 
 #[derive(Default, Clone, Debug)]
 struct HeightSpan {

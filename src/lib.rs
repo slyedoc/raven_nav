@@ -79,8 +79,7 @@ impl Plugin for RavenPlugin {
                 )
                     .chain(),
                 //.in_set(OxidizedNavigation::Main),
-            )
-            ;
+            );
     }
 }
 

@@ -8,7 +8,7 @@ use common::*;
 fn main() {
     App::new()
         .add_plugins((
-            DefaultPlugins,            
+            DefaultPlugins,
             PhysicsPlugins::default(),
             ExampleCommonPlugin,
         ))
@@ -30,7 +30,7 @@ fn setup(
     let cube_mesh = meshes.add(Cuboid::default());
 
     // Ground
-    commands.spawn((        
+    commands.spawn((
         Mesh3d(cube_mesh.clone()),
         MeshMaterial3d(materials.add(Color::srgb(0.7, 0.7, 0.8))),
         Transform::from_xyz(0.0, -2.0, 0.0).with_scale(Vec3::new(100.0, 1.0, 100.0)),

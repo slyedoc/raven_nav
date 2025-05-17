@@ -1,6 +1,10 @@
 use std::sync::{Arc, RwLock};
 
-use bevy::{platform::collections::{HashMap, HashSet}, prelude::*, tasks::Task};
+use bevy::{
+    platform::collections::{HashMap, HashSet},
+    prelude::*,
+    tasks::Task,
+};
 
 use crate::tiles::NavMeshTiles;
 
@@ -10,7 +14,6 @@ pub struct TileAffectors(pub HashMap<UVec2, HashSet<Entity>>);
 /// Set of all tiles that need to be rebuilt.
 #[derive(Default, Resource)]
 pub struct DirtyTiles(pub HashSet<UVec2>);
-
 
 #[derive(Resource, Default)]
 pub struct ActiveGenerationTasks(pub Vec<Task<Option<UVec2>>>);

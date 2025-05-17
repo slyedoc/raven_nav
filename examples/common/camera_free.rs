@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
 
-
 pub(super) const DEFAULT_SPEED: f32 = 0.1;
 pub(super) const DEFAULT_ROTATION: f32 = 0.003;
 
@@ -10,29 +9,29 @@ pub struct CameraFreePlugin;
 impl Plugin for CameraFreePlugin {
     fn build(&self, app: &mut App) {
         app.add_input_context::<CameraFreeInputContext>()
-        .add_observer(default_binding)
-        .add_observer(apply_movement)
-        .add_observer(apply_assend)
-        .add_observer(apply_rotate)
-        .add_systems(PostStartup, log_message);
+            .add_observer(default_binding)
+            .add_observer(apply_movement)
+            .add_observer(apply_assend)
+            .add_observer(apply_rotate)
+            .add_systems(PostStartup, log_message);
     }
 }
 
 fn log_message() {
-    println!("Camera Controls: WASD, Arrow Keys, Q/E to ascend/descend, Right Mouse Button to look around");
+    println!(
+        "Camera Controls: WASD, Arrow Keys, Q/E to ascend/descend, Right Mouse Button to look around"
+    );
 }
 
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Default, Reflect)]
 #[require(
     Name = Name::new("CameraFree"),    
-    Actions::<CameraFreeInputContext>,      
+    Actions::<CameraFreeInputContext>,
 )]
 pub struct CameraFree;
 
 #[derive(Debug, InputContext, Default)]
 pub struct CameraFreeInputContext;
-
-
 
 fn default_binding(
     trigger: Trigger<Binding<CameraFreeInputContext>>,

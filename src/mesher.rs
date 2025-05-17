@@ -4,10 +4,10 @@ use bevy::{
     prelude::{UVec2, UVec4},
 };
 
-use crate::{contour::ContourSet, detail_mesh::build_detail_mesh, heightfields::OpenTile, Area};
+use crate::{Area, contour::ContourSet, detail_mesh::build_detail_mesh, heightfields::OpenTile};
 
-use super::math::{intersect, intersect_prop, left, left_on};
 use super::NavMeshSettings;
+use super::math::{intersect, intersect_prop, left, left_on};
 
 #[derive(Default, Debug)]
 pub struct PolyMesh {
@@ -338,11 +338,7 @@ fn triangulate(vertices: &[UVec4], indices: &mut Vec<u32>, triangles: &mut Vec<u
 
             indices.remove(next);
 
-            if next >= indices.len() {
-                0
-            } else {
-                next
-            }
+            if next >= indices.len() { 0 } else { next }
         };
 
         let i = (indices.len() + next - 1) % indices.len();

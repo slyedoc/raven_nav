@@ -1,8 +1,12 @@
-use bevy::prelude::*;
 use avian3d::{
-    parry::{math::Isometry, na::Vector3, shape::{HeightField, TypedShape}},
+    parry::{
+        math::Isometry,
+        na::Vector3,
+        shape::{HeightField, TypedShape},
+    },
     prelude::*,
 };
+use bevy::prelude::*;
 
 use crate::conversion::{ColliderType, GeometryToConvert};
 

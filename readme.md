@@ -2,14 +2,14 @@
 
 Bevy + Avain Navigation
 
-Creating this to get a better understanding of oxidized_navigation for myself, and I only care about avian.
+Creating this to get a better understanding of navmeshes for myself, and I only care about avian.
 
 ## Acknowledgements
 
-Large Portions of this codebase are derived from:
+99% of this codebase are derived from following, and you should go use them most likely:
 
-* [oxidized_navigation](https://github.com/TheGrimsey/oxidized_navigation)
-* [landmass](https://github.com/andriyDev/landmass)
+- [x] [oxidized_navigation](https://github.com/TheGrimsey/oxidized_navigation)
+- [ ] [landmass](https://github.com/andriyDev/landmass)
 
 ## Notes
 

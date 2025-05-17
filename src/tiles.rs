@@ -6,8 +6,8 @@ use bevy::{
 use smallvec::SmallVec;
 
 use crate::{
-    mesher::{EdgeConnection, EdgeConnectionDirection, VERTICES_IN_TRIANGLE},
     Area, NavMeshSettings,
+    mesher::{EdgeConnection, EdgeConnectionDirection, VERTICES_IN_TRIANGLE},
 };
 
 use super::mesher::PolyMesh;

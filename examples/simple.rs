@@ -2,37 +2,33 @@ mod common; // helper functions
 use common::*;
 
 use avian3d::prelude::*;
-use bevy::{input::common_conditions::{input_toggle_active}, prelude::*};
+use bevy::{input::common_conditions::input_toggle_active, prelude::*};
 use raven::prelude::*;
 
 fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins.set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "Raven: Simple".to_string(),
-                        ..default()
-                    }),
+                primary_window: Some(Window {
+                    title: "Raven: Simple".to_string(),
                     ..default()
                 }),
-            
-            // utility
+                ..default()
+            }),
             ExampleCommonPlugin,
-          
-
-
-            // physics
             PhysicsPlugins::default(),
             RavenPlugin {
-                 settings: NavMeshSettings::from_agent_and_bounds(0.5, 1.9, 250.0, -1.0),
+                settings: NavMeshSettings::from_agent_and_bounds(0.5, 1.9, 250.0, -1.0),
             },
             RavenDebugPlugin,
         ))
         .add_systems(Startup, setup)
-        .add_systems(Update, toggle_nav_mesh_debug_draw.run_if(input_toggle_active(true, KeyCode::KeyM)))
+        .add_systems(
+            Update,
+            toggle_nav_mesh_debug_draw.run_if(input_toggle_active(true, KeyCode::KeyM)),
+        )
         .run();
 }
-
 
 fn setup(
     mut commands: Commands,
@@ -92,9 +88,6 @@ fn setup(
     ));
 }
 
-
-fn toggle_nav_mesh_debug_draw(
-    mut show_navmesh: ResMut<DrawNavMesh>,
-) {
+fn toggle_nav_mesh_debug_draw(mut show_navmesh: ResMut<DrawNavMesh>) {
     show_navmesh.0 = !show_navmesh.0;
 }

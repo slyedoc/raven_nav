@@ -2,7 +2,6 @@ mod camera_free;
 use bevy_enhanced_input::EnhancedInputPlugin;
 pub use camera_free::*;
 
-
 use bevy::prelude::*;
 
 /// A plugin that adds common functionality used by examples,
@@ -13,13 +12,11 @@ impl Plugin for ExampleCommonPlugin {
     fn build(&self, app: &mut App) {
         // Add diagnostics.
         app.add_plugins((
-
-            sly_editor::SlyEditorPlugin::default(),  // custom bevy_egui_inspector and avian editor
+            sly_editor::SlyEditorPlugin::default(), // custom bevy_egui_inspector and avian editor
             EnhancedInputPlugin,
             CameraFreePlugin,
         ))
         .add_systems(Startup, setup_key_instructions);
-
     }
 }
 

@@ -1,11 +1,11 @@
-use bevy::prelude::{Transform, Vec3};
 use avian3d::parry::{
     math::Real,
     na::Point3,
     shape::{Ball, Capsule, Cone, Cuboid, Cylinder, Triangle},
 };
+use bevy::prelude::{Transform, Vec3};
 
-use crate::{heightfields::TriangleCollection, Area};
+use crate::{Area, heightfields::TriangleCollection};
 
 pub struct GeometryCollection {
     pub transform: Transform,
