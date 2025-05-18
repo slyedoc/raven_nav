@@ -82,6 +82,7 @@ impl Plugin for RavenPlugin {
     fn build(&self, app: &mut App) {
         app
             .init_asset::<LandmassNavMesh>()
+            .add_event::<TileGenerated>()
             .insert_resource(self.settings.clone())
             .init_resource::<TileAffectors>()
             .init_resource::<DirtyTiles>()
@@ -89,15 +90,16 @@ impl Plugin for RavenPlugin {
             .init_resource::<GenerationTicker>()
             .init_resource::<ActiveGenerationTasks>()
             .init_resource::<TileToIsland>()
-            .add_systems(Startup, setup)
             .add_systems(
                 Update,
                 (
-                    (add_agents_to_archipelago, add_characters_to_archipelago),
-                    (update_tile, update_navmesh_affectors),
+                    //(add_agents_to_archipelago, add_characters_to_archipelago),
+                    //remove_finished_tasks,
+                    handle_tile_generation_finished,
+                    update_navmesh_affectors,
                     send_tile_rebuild_tasks.run_if(can_generate_new_tiles),
                 )
-                    .chain(),
+                    .chain()
                 //.in_set(OxidizedNavigation::Main),
             )
             .register_type::<Agent>()
@@ -114,7 +116,6 @@ impl Plugin for RavenPlugin {
     }
 }
 
-fn setup(mut commands: Commands) {}
 
 /// Add archipelago refs to agents if not present
 /// Assuming only one archipelago exists, if not you need to set CharacterArchipelago yourself when spawning the character.
@@ -142,16 +143,40 @@ fn add_characters_to_archipelago(
     }
 }
 
-/// Updates the island (or creates one) corresponding to the tile when a tile is generated.
-fn update_tile(
+/// Event containing the tile coordinate of a generated/regenerated tile.
+///
+/// Emitted when a tile has been updated.
+#[derive(Event)]
+pub struct TileGenerated(pub UVec2);
+
+fn remove_finished_tasks(
     mut active_generation_tasks: ResMut<ActiveGenerationTasks>,
-    oxidized_nav_mesh: Res<NavMesh>,
+    mut event: EventWriter<TileGenerated>,
+) {
+    active_generation_tasks.0.retain_mut(|task| {
+        if let Some(tile) = future::block_on(future::poll_once(task)) {
+            if let Some(tile) = tile {
+                event.write(TileGenerated(tile));
+            }
+
+            false
+        } else {
+            true
+        }
+    });
+}
+
+/// Updates the island (or creates one) corresponding to the tile when a tile is generated.
+fn handle_tile_generation_finished(
+    mut active_generation_tasks: ResMut<ActiveGenerationTasks>,
+     oxidized_nav_mesh: Res<NavMesh>,
     archipelago: Single<Entity, With<Archipelago>>,
     mut complete: Local<Vec<UVec2>>, // could use events like before, but dont know anyone else that would need to know, using local to avoid allocating
-    mut tile_to_entity: ResMut<TileToIsland>,
-    mut nav_meshes: ResMut<Assets<LandmassNavMesh>>,
-    mut commands: Commands,
+     mut tile_to_entity: ResMut<TileToIsland>,
+     mut nav_meshes: ResMut<Assets<LandmassNavMesh>>,
+     mut commands: Commands,
 ) {
+
     // Check if there are any tasks that have completed.
     let tiles = active_generation_tasks.0.retain_mut(|task| {
         if let Some(tile) = future::block_on(future::poll_once(task)) {
@@ -168,65 +193,65 @@ fn update_tile(
         return;
     }
 
-    // let oxidized_nav_mesh = oxidized_nav_mesh.get();
-    // let tiles = match oxidized_nav_mesh.read() {
-    //     Ok(tiles) => tiles,
-    //     Err(err) => {
-    //         warn!("Failed to read oxidized_navigation::NavMesh: {err}");
-    //         return;
-    //     }
-    // };
+    let oxidized_nav_mesh = oxidized_nav_mesh.get();
+     let tiles = match oxidized_nav_mesh.read() {
+        Ok(tiles) => tiles,
+        Err(err) => {
+            warn!("Failed to read oxidized_navigation::NavMesh: {err}");
+            return;
+        }
+    };
 
-    // for tile in complete.iter() {
-    //     error!("Tile: {tile:?}");
-    //     let entity = tile_to_entity.get(tile);
-    //     let nav_mesh_tile = tiles.tiles.get(tile);
-    //     let nav_mesh_tile = match nav_mesh_tile {
-    //         None => {
-    //             if let Some(&entity) = entity {
-    //                 // Ensure the island entity has no nav mesh on it. This may be
-    //                 // redundant if the generation is spuriously incremented, however
-    //                 // that should be infrequent so that should be fine.
-    //                 commands.entity(entity).remove::<NavMeshHandle>();
-    //             }
-    //             continue;
-    //         }
-    //         Some(tile) => tile,
-    //     };
+    for tile in complete.iter() {
+        // error!("Tile: {tile:?}");
+        let entity = tile_to_entity.get(tile);
+        let nav_mesh_tile = tiles.tiles.get(tile);
+        let nav_mesh_tile = match nav_mesh_tile {
+            None => {
+                if let Some(&entity) = entity {
+                    // Ensure the island entity has no nav mesh on it. This may be
+                    // redundant if the generation is spuriously incremented, however
+                    // that should be infrequent so that should be fine.
+                    commands.entity(entity).remove::<NavMeshHandle>();
+                }
+                continue;
+            }
+            Some(tile) => tile,
+        };
 
-    //     let entity = match entity {
-    //         None => {
-    //             let entity = commands
-    //                 .spawn((
-    //                     Name::new(format!("Island {},{}", tile.x, tile.y)),
-    //                     Island(*archipelago)
-    //                 ))
-    //                 .id();
-    //             tile_to_entity.0.insert(*tile, entity);
-    //             entity
-    //         }
-    //         Some(&entity) => entity,
-    //     };
+        let entity = match entity {
+            None => {
+                let entity = commands
+                    .spawn((
+                        Name::new(format!("Island {},{}", tile.x, tile.y)),
+                        Island(*archipelago)
+                    ))
+                    .id();
+                tile_to_entity.0.insert(*tile, entity);
+                entity
+            }
+            Some(&entity) => entity,
+        };
 
-    //     let nav_mesh = tile_to_landmass_nav_mesh(nav_mesh_tile);
-    //     let valid_nav_mesh = match nav_mesh.validate() {
-    //         Ok(valid_nav_mesh) => valid_nav_mesh,
-    //         Err(err) => {
-    //             warn!("Failed to validate oxidized_navigation tile: {err:?}");
-    //             // Ensure the island has no nav mesh. The island may be brand new, so
-    //             // this may be redundant, but better to make sure.
-    //             commands.entity(entity).remove::<NavMeshHandle>();
-    //             continue;
-    //         }
-    //     };
+        let nav_mesh = tile_to_landmass_nav_mesh(nav_mesh_tile);
+        let valid_nav_mesh = match nav_mesh.validate() {
+            Ok(valid_nav_mesh) => valid_nav_mesh,
+            Err(err) => {
+                warn!("Failed to validate oxidized_navigation tile: {err:?}");
+                // Ensure the island has no nav mesh. The island may be brand new, so
+                // this may be redundant, but better to make sure.
+                commands.entity(entity).remove::<NavMeshHandle>();
+                continue;
+            }
+        };
 
-    //     commands
-    //         .entity(entity)
-    //         .insert(NavMeshHandle(nav_meshes.add(LandmassNavMesh {
-    //             nav_mesh: Arc::new(valid_nav_mesh),
-    //             type_index_to_node_type: HashMap::new(),
-    //         })));
-    // }
+        commands
+            .entity(entity)
+            .insert(NavMeshHandle(nav_meshes.add(LandmassNavMesh {
+                nav_mesh: Arc::new(valid_nav_mesh),
+                type_index_to_node_type: HashMap::new(),
+            })));
+    }
 
     complete.clear();
 }

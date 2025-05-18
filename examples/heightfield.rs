@@ -50,7 +50,7 @@ fn setup(
             hdr: true,
             ..default()
         },
-        Transform::from_xyz(0.0, 20.0, -40.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(0.0, 20.0, 40.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
     commands.spawn((
@@ -60,6 +60,12 @@ fn setup(
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -1.0, -0.5, 0.0)),
+    ));
+
+    // spawn default archipelago for now
+    commands.spawn((
+        Name::new("Archipelago"),
+        Archipelago::from_agent_radius(0.5),
     ));
 
     // heightfield
@@ -85,15 +91,15 @@ fn setup(
         NavMeshAffector, // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
     ));
 
-    commands.spawn((
-        Name::new("Cube"),
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-        MeshMaterial3d(materials.add(Color::srgb(0.5, 0.3, 0.3))),
-        Transform::from_xyz(0.0, 10.0, 0.0),
-        Collider::cuboid(1.0, 1.0, 1.0),
-        RigidBody::Dynamic,
-        NavMeshAffector, // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
-    ));
+    // commands.spawn((
+    //     Name::new("Cube"),
+    //     Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+    //     MeshMaterial3d(materials.add(Color::srgb(0.5, 0.3, 0.3))),
+    //     Transform::from_xyz(0.0, 10.0, 0.0),
+    //     Collider::cuboid(1.0, 1.0, 1.0),
+    //     RigidBody::Dynamic,
+    //     NavMeshAffector, // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
+    // ));
 
     commands.spawn((
         Name::new("Text"),
@@ -128,19 +134,19 @@ pub fn generate_mesh_from_heightfield(
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(num_vertices);
     let mut indices: Vec<u32> = Vec::with_capacity(num_indices);
 
-    let half_size = size as f32 / 2.0;
+    let half_size = (size as f32 - 1.0) / 2.0;
     for y in 0..size {
         for x in 0..size {
             let i = (y * size) + x;
             // find the position of the vertex and center, with height_multiplier
             let pos = [
-                (x as f32 - half_size) * scale.x / size as f32,
+                (x as f32 - half_size) * scale.x / (size as f32 - 1.0),
                 (heightfield[x][y] * scale.y) as f32,
-                (y as f32 - half_size) * scale.z / size as f32,
+                (y as f32 - half_size) * scale.z / (size as f32 - 1.0),
             ];
 
             positions.push(pos);
-            uvs.push([x as f32 / size as f32, y as f32 / size as f32]);
+            uvs.push([x as f32 / (size as f32 - 1.0), y as f32 / (size as f32 - 1.0)]);
 
             if x < size - 1 && y < size - 1 {
                 let a = i;
@@ -167,7 +173,7 @@ pub fn generate_mesh_from_heightfield(
     mesh.insert_indices(Indices::U32(indices));
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
 
-    // compute normals
+    // compute normals and add positions
     match smooth {
         true => {
             let mut normals: Vec<[f32; 3]> = Vec::with_capacity(num_vertices);
