@@ -4,6 +4,7 @@ use common::*;
 use avian3d::prelude::*;
 use bevy::{input::common_conditions::input_toggle_active, prelude::*};
 use raven::prelude::*;
+use sly_editor::IsEditorCamera;
 
 fn main() {
     App::new()
@@ -37,6 +38,7 @@ fn setup(
 ) {
     commands.spawn((
         CameraFree,
+        IsEditorCamera,
         Camera3d::default(),
         Camera {
             hdr: true,
@@ -53,24 +55,40 @@ fn setup(
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -1.0, -0.5, 0.0)),
     ));
 
-    // ground
+    // spawn default archipelago for now
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(10.0, 0.2, 10.0))),
+        Name::new("Archipelago"),
+        Archipelago::from_agent_radius(0.5),
+    ));
+
+    commands.spawn((
+        Name::new("Ground"),
+        Mesh3d(meshes.add(Plane3d::new(Vec3::Y, vec2(10.0, 10.0)))),
         MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
         Transform::default(),
-        Collider::cuboid(10.0, 0.2, 10.0),
+        ColliderConstructor::TrimeshFromMesh,
         RigidBody::Static,
         NavMeshAffector, // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
     ));
 
-    // cube
     commands.spawn((
+        Name::new("Cube"),
         Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
         MeshMaterial3d(materials.add(Color::srgb(0.5, 0.3, 0.3))),
         Transform::from_xyz(0.0, 3.0, 0.0),
         Collider::cuboid(1.0, 1.0, 1.0),
         RigidBody::Dynamic,
         NavMeshAffector, // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
+    ));
+
+    commands.spawn((
+        Name::new("Agent 1"),
+        Mesh3d(meshes.add(Capsule3d::new(0.5, 1.9))),
+        MeshMaterial3d(materials.add(Color::srgb(0.3, 0.3, 0.5))),
+        Transform::from_xyz(2.0, 1.9, 0.0),
+        Collider::capsule(0.5, 1.9),
+        RigidBody::Dynamic,
+        Agent,
     ));
 
     commands.spawn((

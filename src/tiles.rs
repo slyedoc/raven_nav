@@ -42,19 +42,17 @@ pub struct Polygon {
     pub links: SmallVec<[Link; VERTICES_IN_TRIANGLE]>, // This becomes a mess memory wise with a ton of different small objects around.
 }
 
-/*
-*   Polygons make up a form of graph, linking to other polygons (which could be on another mesh)
-*/
-
 /// A single nav-mesh tile.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NavMeshTile {
     /// Vertices in world space.
     pub vertices: Box<[Vec3]>,
+    // Polygons make up a form of graph, linking to other polygons (which could be on another mesh)
     pub polygons: Box<[Polygon]>,
     pub areas: Box<[Area]>,
     pub edges: Box<[[EdgeConnection; VERTICES_IN_TRIANGLE]]>,
 }
+
 impl NavMeshTile {
     /// Returns the closest point on ``polygon`` to ``position``.
     pub fn get_closest_point_in_polygon(&self, polygon: &Polygon, position: Vec3) -> Vec3 {

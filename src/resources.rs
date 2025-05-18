@@ -26,17 +26,6 @@ impl ActiveGenerationTasks {
     }
 }
 
-/// Wrapper around the nav-mesh data.
-///
-/// The underlying [NavMeshTiles] must be retrieved using [NavMesh::get]
-#[derive(Default, Resource)]
-pub struct NavMesh(pub Arc<RwLock<NavMeshTiles>>);
-
-impl NavMesh {
-    pub fn get(&self) -> Arc<RwLock<NavMeshTiles>> {
-        self.0.clone()
-    }
-}
 
 /// Generation ticker for tiles.
 ///

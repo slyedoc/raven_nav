@@ -4593,8 +4593,10 @@ dependencies = [
  "avian3d",
  "bevy",
  "bevy_enhanced_input",
+ "disjoint",
  "sly_editor",
  "smallvec",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

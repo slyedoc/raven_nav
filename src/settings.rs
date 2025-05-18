@@ -66,6 +66,7 @@ pub struct NavMeshSettings {
     /// Adjust this to control memory & CPU usage. More tiles generating at once will have a higher memory footprint.
     pub max_tile_generation_tasks: Option<NonZeroU16>,
 
+    /// TODO: this breaks when any meshes are concave like heightfields. do not use this yet.
     /// When not None, height correct nav-mesh polygons where the surface height differs too much from the surface in cells. This is very useful for bumpy terrain.
     ///
     /// Helps on bumpy shapes like terrain but comes at a performance cost.
@@ -167,6 +168,7 @@ impl NavMeshSettings {
         self
     }
 
+    /// TODO: this breaks when any meshes are concave like heightfields. do not use this yet.
     /// Setter for [`NavMeshSettings::experimental_detail_mesh_generation`]
     ///
     /// **Experimental**: This may have issues at the edges of regions.

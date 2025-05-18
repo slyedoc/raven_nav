@@ -5,6 +5,9 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use agent::{Agent, AgentArchipelago, AgentSettings};
+use archipelago::Archipelago;
+use character::{Character, CharacterArchipelago};
 use collider::{GeometryResult, get_geometry_type};
 use contour::build_contours;
 use conversion::{GeometryCollection, convert_geometry_collections};
@@ -24,6 +27,7 @@ use components::*;
 mod resources;
 use resources::*;
 
+mod agent;
 mod collider;
 mod contour;
 mod conversion;
@@ -35,6 +39,16 @@ mod math;
 mod mesher;
 mod regions;
 mod tiles;
+use agent::*;
+mod archipelago;
+use archipelago::*;
+mod character;
+use character::*;
+mod island;
+use island::*;
+mod nav_mesh;
+use nav_mesh::*;
+mod bounding_box;
 
 use avian3d::{
     parry::{math::Isometry, na::Vector3, shape::TypedShape},
@@ -52,7 +66,9 @@ use tiles::{NavMeshTile, NavMeshTiles, create_nav_mesh_tile_from_poly_mesh};
 pub mod prelude {
     #[cfg(feature = "debug_draw")]
     pub use crate::debug_draw::*;
-    pub use crate::{components::NavMeshAffector, settings::*, *};
+    pub use crate::{
+        agent::*, archipelago::*, character::*, components::NavMeshAffector, settings::*, *,
+    };
 }
 
 const FLAG_BORDER_VERTEX: u32 = 0x10000;
@@ -64,47 +80,180 @@ pub struct RavenPlugin {
 
 impl Plugin for RavenPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(self.settings.clone())
+        app
+            .init_asset::<LandmassNavMesh>()
+            .insert_resource(self.settings.clone())
             .init_resource::<TileAffectors>()
             .init_resource::<DirtyTiles>()
             .init_resource::<NavMesh>()
             .init_resource::<GenerationTicker>()
             .init_resource::<ActiveGenerationTasks>()
-            .add_event::<TileGenerated>()
+            .init_resource::<TileToIsland>()
+            .add_systems(Startup, setup)
             .add_systems(
                 Update,
                 (
-                    (remove_finished_tasks, update_navmesh_affectors),
+                    (add_agents_to_archipelago, add_characters_to_archipelago),
+                    (update_tile, update_navmesh_affectors),
                     send_tile_rebuild_tasks.run_if(can_generate_new_tiles),
                 )
                     .chain(),
                 //.in_set(OxidizedNavigation::Main),
-            );
+            )
+            .register_type::<Agent>()
+            .register_type::<AgentSettings>()
+            .register_type::<AgentArchipelago>()
+            .register_type::<Character>()
+            .register_type::<CharacterSettings>()
+            .register_type::<CharacterArchipelago>()
+            .register_type::<Island>()
+            .register_type::<Archipelago>()
+            .register_type::<ArchipelagoAgents>()
+            .register_type::<ArchipelagoCharacters>()
+            .register_type::<ArchipelagoIslands>();
     }
 }
 
-/// Event containing the tile coordinate of a generated/regenerated tile.
-///
-/// Emitted when a tile has been updated.
-#[derive(Event)]
-pub struct TileGenerated(pub UVec2);
+fn setup(mut commands: Commands) {}
 
-fn remove_finished_tasks(
-    mut active_generation_tasks: ResMut<ActiveGenerationTasks>,
-    mut event: EventWriter<TileGenerated>,
+/// Add archipelago refs to agents if not present
+/// Assuming only one archipelago exists, if not you need to set CharacterArchipelago yourself when spawning the character.
+fn add_agents_to_archipelago(
+    mut commands: Commands,
+    mut query: Query<(Entity), (Without<CharacterArchipelago>, Added<Agent>)>,
+    mut archipelago: Single<Entity, With<Archipelago>>,
 ) {
-    active_generation_tasks.0.retain_mut(|task| {
+    for e in query.iter_mut() {
+        commands.entity(e).insert(AgentArchipelago(*archipelago));
+    }
+}
+
+/// Add archipelago refs to characters if not present
+/// Assuming only one archipelago exists, if not you need to set CharacterArchipelago yourself when spawning the character.
+fn add_characters_to_archipelago(
+    mut commands: Commands,
+    mut query: Query<(Entity), (Without<CharacterArchipelago>, Added<Character>)>,
+    mut archipelago: Single<Entity, With<Archipelago>>,
+) {
+    for e in query.iter_mut() {
+        commands
+            .entity(e)
+            .insert(CharacterArchipelago(*archipelago));
+    }
+}
+
+/// Updates the island (or creates one) corresponding to the tile when a tile is generated.
+fn update_tile(
+    mut active_generation_tasks: ResMut<ActiveGenerationTasks>,
+    oxidized_nav_mesh: Res<NavMesh>,
+    archipelago: Single<Entity, With<Archipelago>>,
+    mut complete: Local<Vec<UVec2>>, // could use events like before, but dont know anyone else that would need to know, using local to avoid allocating
+    mut tile_to_entity: ResMut<TileToIsland>,
+    mut nav_meshes: ResMut<Assets<LandmassNavMesh>>,
+    mut commands: Commands,
+) {
+    // Check if there are any tasks that have completed.
+    let tiles = active_generation_tasks.0.retain_mut(|task| {
         if let Some(tile) = future::block_on(future::poll_once(task)) {
             if let Some(tile) = tile {
-                event.write(TileGenerated(tile));
+                complete.push(tile);
             }
-
             false
         } else {
             true
         }
     });
+
+    if complete.is_empty() {
+        return;
+    }
+
+    let oxidized_nav_mesh = oxidized_nav_mesh.get();
+    let tiles = match oxidized_nav_mesh.read() {
+        Ok(tiles) => tiles,
+        Err(err) => {
+            warn!("Failed to read oxidized_navigation::NavMesh: {err}");
+            return;
+        }
+    };
+
+    for tile in complete.iter() {
+        let entity = tile_to_entity.get(tile);
+        let nav_mesh_tile = tiles.tiles.get(tile);
+        let nav_mesh_tile = match nav_mesh_tile {
+            None => {
+                if let Some(&entity) = entity {
+                    // Ensure the island entity has no nav mesh on it. This may be
+                    // redundant if the generation is spuriously incremented, however
+                    // that should be infrequent so that should be fine.
+                    commands.entity(entity).remove::<NavMeshHandle>();
+                }
+                continue;
+            }
+            Some(tile) => tile,
+        };
+
+        let entity = match entity {
+            None => {
+                let entity = commands
+                    .spawn((
+                        Name::new(format!("Island {},{}", tile.x, tile.y)),
+                        Island(*archipelago)
+                    ))
+                    .id();
+                tile_to_entity.0.insert(*tile, entity);
+                entity
+            }
+            Some(&entity) => entity,
+        };
+
+        let nav_mesh = tile_to_landmass_nav_mesh(nav_mesh_tile);
+        let valid_nav_mesh = match nav_mesh.validate() {
+            Ok(valid_nav_mesh) => valid_nav_mesh,
+            Err(err) => {
+                warn!("Failed to validate oxidized_navigation tile: {err:?}");
+                // Ensure the island has no nav mesh. The island may be brand new, so
+                // this may be redundant, but better to make sure.
+                commands.entity(entity).remove::<NavMeshHandle>();
+                continue;
+            }
+        };
+
+        commands
+            .entity(entity)
+            .insert(NavMeshHandle(nav_meshes.add(LandmassNavMesh {
+                nav_mesh: Arc::new(valid_nav_mesh),
+                type_index_to_node_type: HashMap::new(),
+            })));
+    }
+
+    complete.clear();
 }
+
+// TODO: collapse these 2 to single struct
+/// Converts the [`NavMeshTile`] into the corresponding [`NavigationMesh`].
+fn tile_to_landmass_nav_mesh(tile: &NavMeshTile) -> NavigationMesh {
+  NavigationMesh {
+    vertices: tile
+      .vertices
+      .iter()
+      .copied()
+      .map(|vertex| Vec3::new(vertex.x, vertex.y, vertex.z))
+      .collect(),
+    polygons: tile
+      .polygons
+      .iter()
+      .map(|polygon| {
+        polygon.indices.iter().copied().map(|i| i as usize).collect()
+      })
+      .collect(),
+    polygon_type_indices: vec![0; tile.polygons.len()],
+  }
+}
+
+/// Tracks the islands corresponding to each tile of `oxidized_navigation`.
+#[derive(Resource, Default, Deref)]
+pub struct TileToIsland(HashMap<UVec2, Entity>);
 
 #[expect(clippy::type_complexity)]
 fn update_navmesh_affectors(

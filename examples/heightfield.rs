@@ -20,7 +20,6 @@ fn main() {
                 }),
                 ..default()
             }),
-            // utility
             ExampleCommonPlugin,
             // physics
             PhysicsPlugins::default(),
