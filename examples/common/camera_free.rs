@@ -12,16 +12,11 @@ impl Plugin for CameraFreePlugin {
             .add_observer(default_binding)
             .add_observer(apply_movement)
             .add_observer(apply_assend)
-            .add_observer(apply_rotate)
-            .add_systems(PostStartup, log_message);
+            .add_observer(apply_rotate);
     }
 }
 
-fn log_message() {
-    println!(
-        "Camera Controls: WASD, Arrow Keys, Q/E to ascend/descend, Right Mouse Button to look around"
-    );
-}
+
 
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Default, Reflect)]
 #[require(

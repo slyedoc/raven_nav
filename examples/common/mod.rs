@@ -22,7 +22,7 @@ impl Plugin for ExampleCommonPlugin {
 
 fn setup_key_instructions(mut commands: Commands) {
     commands.spawn((
-        Text::new("U: Avian Diag | P: Pause/Unpause | Enter: Step | F1: Toggle Colliders, Backquote: Egui, Right Mouse: Look Around, WASD: Move, Arrow Keys: Rotate, Q/E: Ascend/Descend"),
+        Text::new("Backquote: Egui, U: Avian Diag | P: Pause/Unpause | Enter: Step | F1: Toggle Colliders, Right Mouse: Look Around, WASD: Move"),
         TextFont {
             font_size: 10.0,
             ..default()

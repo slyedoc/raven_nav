@@ -168,64 +168,65 @@ fn update_tile(
         return;
     }
 
-    let oxidized_nav_mesh = oxidized_nav_mesh.get();
-    let tiles = match oxidized_nav_mesh.read() {
-        Ok(tiles) => tiles,
-        Err(err) => {
-            warn!("Failed to read oxidized_navigation::NavMesh: {err}");
-            return;
-        }
-    };
+    // let oxidized_nav_mesh = oxidized_nav_mesh.get();
+    // let tiles = match oxidized_nav_mesh.read() {
+    //     Ok(tiles) => tiles,
+    //     Err(err) => {
+    //         warn!("Failed to read oxidized_navigation::NavMesh: {err}");
+    //         return;
+    //     }
+    // };
 
-    for tile in complete.iter() {
-        let entity = tile_to_entity.get(tile);
-        let nav_mesh_tile = tiles.tiles.get(tile);
-        let nav_mesh_tile = match nav_mesh_tile {
-            None => {
-                if let Some(&entity) = entity {
-                    // Ensure the island entity has no nav mesh on it. This may be
-                    // redundant if the generation is spuriously incremented, however
-                    // that should be infrequent so that should be fine.
-                    commands.entity(entity).remove::<NavMeshHandle>();
-                }
-                continue;
-            }
-            Some(tile) => tile,
-        };
+    // for tile in complete.iter() {
+    //     error!("Tile: {tile:?}");
+    //     let entity = tile_to_entity.get(tile);
+    //     let nav_mesh_tile = tiles.tiles.get(tile);
+    //     let nav_mesh_tile = match nav_mesh_tile {
+    //         None => {
+    //             if let Some(&entity) = entity {
+    //                 // Ensure the island entity has no nav mesh on it. This may be
+    //                 // redundant if the generation is spuriously incremented, however
+    //                 // that should be infrequent so that should be fine.
+    //                 commands.entity(entity).remove::<NavMeshHandle>();
+    //             }
+    //             continue;
+    //         }
+    //         Some(tile) => tile,
+    //     };
 
-        let entity = match entity {
-            None => {
-                let entity = commands
-                    .spawn((
-                        Name::new(format!("Island {},{}", tile.x, tile.y)),
-                        Island(*archipelago)
-                    ))
-                    .id();
-                tile_to_entity.0.insert(*tile, entity);
-                entity
-            }
-            Some(&entity) => entity,
-        };
+    //     let entity = match entity {
+    //         None => {
+    //             let entity = commands
+    //                 .spawn((
+    //                     Name::new(format!("Island {},{}", tile.x, tile.y)),
+    //                     Island(*archipelago)
+    //                 ))
+    //                 .id();
+    //             tile_to_entity.0.insert(*tile, entity);
+    //             entity
+    //         }
+    //         Some(&entity) => entity,
+    //     };
 
-        let nav_mesh = tile_to_landmass_nav_mesh(nav_mesh_tile);
-        let valid_nav_mesh = match nav_mesh.validate() {
-            Ok(valid_nav_mesh) => valid_nav_mesh,
-            Err(err) => {
-                warn!("Failed to validate oxidized_navigation tile: {err:?}");
-                // Ensure the island has no nav mesh. The island may be brand new, so
-                // this may be redundant, but better to make sure.
-                commands.entity(entity).remove::<NavMeshHandle>();
-                continue;
-            }
-        };
+    //     let nav_mesh = tile_to_landmass_nav_mesh(nav_mesh_tile);
+    //     let valid_nav_mesh = match nav_mesh.validate() {
+    //         Ok(valid_nav_mesh) => valid_nav_mesh,
+    //         Err(err) => {
+    //             warn!("Failed to validate oxidized_navigation tile: {err:?}");
+    //             // Ensure the island has no nav mesh. The island may be brand new, so
+    //             // this may be redundant, but better to make sure.
+    //             commands.entity(entity).remove::<NavMeshHandle>();
+    //             continue;
+    //         }
+    //     };
 
-        commands
-            .entity(entity)
-            .insert(NavMeshHandle(nav_meshes.add(LandmassNavMesh {
-                nav_mesh: Arc::new(valid_nav_mesh),
-                type_index_to_node_type: HashMap::new(),
-            })));
-    }
+    //     commands
+    //         .entity(entity)
+    //         .insert(NavMeshHandle(nav_meshes.add(LandmassNavMesh {
+    //             nav_mesh: Arc::new(valid_nav_mesh),
+    //             type_index_to_node_type: HashMap::new(),
+    //         })));
+    // }
 
     complete.clear();
 }
