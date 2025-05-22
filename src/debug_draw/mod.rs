@@ -19,7 +19,7 @@ impl Plugin for RavenDebugPlugin {
         app.insert_gizmo_config(
             RavenGizmos::default(),
             GizmoConfig {
-                //depth_bias: -1.0,
+                depth_bias: -1.0,
                 render_layers: self.render_layer.clone(),
                 ..Default::default()
             },
@@ -51,7 +51,7 @@ impl Default for RavenGizmos {
     fn default() -> Self {
         Self {
             archipelago_bounds: Some(tailwind::RED_100.into()),
-            tile_bounds: Some(css::RED.into()),
+            tile_bounds: None, //Some(css::RED.into()),
             tile_polygons: Some(css::GREEN.into()),
             tile_edges: Some(css::BLUE.into()),
         }

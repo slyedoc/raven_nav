@@ -58,12 +58,12 @@ fn setup(
     // spawn default archipelago for now
     commands.spawn((
         Name::new("Archipelago"),
-        Archipelago::new(0.5, 1.9, Vec3::splat(50.0)),
+        Archipelago::new(0.5, 1.9, Vec3::splat(200.0)),
         ArchipelagoMovement, // helper to move the archipelago around with Arrow Keys to see regeneration
     ));
 
     // heightfield
-    let resolution = 150;
+    let resolution = 250;
     let oct = 10.0;
     let height_scale = 8.0;
     let scale = Vec3::new(resolution as f32, height_scale, resolution as f32);

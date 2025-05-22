@@ -45,6 +45,8 @@ pub enum ValidationError {
     /// Stores the indices of the two vertices that make up the edge.
     #[error("The edge made from vertices {0} and {1} is used by more than two polygons.")]
     DoublyConnectedEdge(usize, usize),
+    #[error("There are no vertices in the polygon.")]
+    NoVertices
 }
 
 impl PreNavigationMesh {
@@ -60,8 +62,9 @@ impl PreNavigationMesh {
             ));
         }
 
-        let mesh_bounds =
-            Aabb::enclosing(self.vertices.iter()).expect("should have been at least 1 vertex");
+        let Some(mesh_bounds) = Aabb::enclosing(self.vertices.iter()) else {
+            return Err(ValidationError::NoVertices);
+        };
         let mut region_sets = DisjointSet::with_len(self.polygons.len());
 
         enum ConnectivityState {

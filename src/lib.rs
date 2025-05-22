@@ -58,21 +58,23 @@ pub struct RavenPlugin;
 
 impl Plugin for RavenPlugin {
     fn build(&self, app: &mut App) {
-        app.init_asset::<NavigationMesh>()
-            .add_systems(PreUpdate, archipelago_changed)
+        app.init_asset::<NavigationMesh>()            
             .add_systems(
                 Update,
                 (
                     archipelago_changed,
                     handle_removed_affectors,
-                    update_navmesh_affectors,
-                    //(add_agents_to_archipelago, add_characters_to_archipelago),
-                    start_tile_build_tasks,
-                    update_tile_build_tasks,
                 )
                     .chain(), //.in_set(OxidizedNavigation::Main),
             )
-            .add_systems(PostUpdate, update_tile_build_tasks)
+            .add_systems(PostUpdate, 
+                (
+                    update_navmesh_affectors,
+                    //(add_agents_to_archipelago, add_characters_to_archipelago),
+                    start_tile_build_tasks,
+                    update_tile_build_tasks
+                ).after(TransformSystem::TransformPropagate)
+            )
             .register_type::<Agent>()
             .register_type::<AgentSettings>()
             .register_type::<AgentArchipelago>()
@@ -80,7 +82,8 @@ impl Plugin for RavenPlugin {
             .register_type::<CharacterSettings>()
             .register_type::<CharacterArchipelago>()
             .register_type::<TileAffectors>()
-            .register_type::<Tile>()            
+            .register_type::<Tile>()
+            
             .register_type::<Handle<NavigationMesh>>()
             .register_type::<TileNavMesh>()
             .register_type::<Archipelago>()
@@ -376,7 +379,7 @@ fn start_tile_build_tasks(
             // Step 2: Clear any build tasks for this tile
             active_generation_tasks.retain(|job| job.entity != *tile_enity);
 
-            // Step 3: Start Build Task.
+            // Step 3: Start Build Task.            
             active_generation_tasks.0.push(NavMeshGenerationJob {
                 entity: *tile_enity,
                 //generation: tile_generation.0,
@@ -403,12 +406,10 @@ fn update_tile_build_tasks(
             if let Some(nav_mesh_tile) = future::block_on(future::poll_once(&mut job.task)) {
                 // Generation complete
                 let pre_nav_mesh = tile_to_landmass_nav_mesh(nav_mesh_tile);
-                
                 match pre_nav_mesh.validate() {
                     Ok(nav_mesh) => {
-
                         let nav_mesh_handle = nav_meshes.add(nav_mesh);
-                        info!("Tile {:?} generated {:?}", job.entity, nav_mesh_handle.id());
+                        //info!("Tile {:?} generated {:?}", job.entity, nav_mesh_handle.id());
                         commands
                             .entity(job.entity)
                             .insert(TileNavMesh(nav_mesh_handle));
