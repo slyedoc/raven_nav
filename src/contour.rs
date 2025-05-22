@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use bevy::{
-    log::warn,
+    log::{info_span, warn},
     prelude::{IVec2, UVec2, UVec4},
 };
 
@@ -43,6 +43,9 @@ struct ContourRegion {
 }
 
 pub(crate) fn build_contours(open_tile: &OpenTile, vox_settings: &Archipelago) -> ContourSet {
+    #[cfg(feature = "trace")]
+    let _span = info_span!("raven::build_contours").entered();
+
     let max_contours = open_tile.max_regions.max(8);
     let mut contour_set = ContourSet {
         contours: Vec::with_capacity(max_contours.into()),

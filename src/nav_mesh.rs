@@ -239,14 +239,14 @@ impl PreNavigationMesh {
             vertices: self.vertices,
             boundary_edges,
             used_type_indices,
-            type_index_to_node_type: HashMap::new(),
+            //type_index_to_node_type: HashMap::new(),
         })
     }
 }
 
 // TODO: I dont understand what this is doing yet
-#[derive(Debug)]
-pub struct NodeType;
+//#[derive(Debug)]
+//pub struct NodeType;
 
 /// An asset holding a `landmass` nav mesh.
 #[derive(Asset, TypePath, Debug)]
@@ -272,11 +272,11 @@ pub struct NavigationMesh {
 
     // /// The nav mesh data.
     // pub nav_mesh: Arc<ValidNavigationMesh>,
-    /// A map from the type indices used by [`Self::nav_mesh`] to the
-    /// [`NodeType`]s used in the [`crate::Archipelago`]. Type indices not
-    /// present in this map are implicitly assigned the "default" node type,
-    /// which always has a cost of 1.0.
-    pub type_index_to_node_type: HashMap<usize, NodeType>,
+    // /// A map from the type indices used by [`Self::nav_mesh`] to the
+    // /// [`NodeType`]s used in the [`crate::Archipelago`]. Type indices not
+    // /// present in this map are implicitly assigned the "default" node type,
+    // /// which always has a cost of 1.0.
+    // pub type_index_to_node_type: HashMap<usize, NodeType>,
 }
 
 // A navigation mesh which has been validated and derived data has been
@@ -426,7 +426,7 @@ pub struct NavigationMesh {
 // }
 
 /// A reference to an edge on a navigation mesh.
-#[derive(PartialEq, Eq, Debug, Clone, Hash, Default)]
+#[derive(PartialEq, Eq, Debug, Clone, Hash, Default, Reflect)]
 pub(crate) struct MeshEdgeRef {
     /// The index of the polygon that this edge belongs to.
     pub(crate) polygon_index: usize,
@@ -434,7 +434,7 @@ pub(crate) struct MeshEdgeRef {
     pub(crate) edge_index: usize,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, Reflect)]
 pub(crate) struct Connectivity {
     /// The index of the polygon that this edge leads to.
     pub(crate) polygon_index: usize,
@@ -445,7 +445,7 @@ pub(crate) struct Connectivity {
     pub(crate) travel_distances: (f32, f32),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Reflect)]
 #[allow(dead_code)]
 pub(crate) struct ValidPolygon {
     /// The vertices are indexes to the `vertices` Vec of the corresponding

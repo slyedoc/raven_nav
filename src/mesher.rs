@@ -1,5 +1,5 @@
 use bevy::{
-    log::info,
+    log::{info, info_span},
     math::U16Vec3,
     prelude::{UVec2, UVec4},
 };
@@ -27,6 +27,9 @@ pub fn build_poly_mesh(
     vox_settings: &Archipelago,
     open_tile: &OpenTile,
 ) -> PolyMesh {
+    #[cfg(feature = "trace")]
+    let _span = info_span!("raven::build_poly_mesh").entered();
+
     let mut max_vertices = 0;
     let mut max_tris = 0;
     let mut max_verts_per_contour = 0;

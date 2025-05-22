@@ -37,82 +37,33 @@ pub(crate) async fn build_tile(
     #[cfg(feature = "trace")]
     let _span = info_span!("Build Tile", name = "raven::build_tile").entered();
 
-    let triangle_collection: Vec<TriangleCollection> = {
-        #[cfg(feature = "trace")]
-        let _span =
-            info_span!("Covert Geometrvey Collections", name = "raven::build_tile").entered();
-        geometry_collections
-            .into_iter()
-            .map(|geometry_collection| TriangleCollection {
-                transform: geometry_collection.transform,
-                triangles: match geometry_collection.geometry_to_convert {
-                    GeometryToConvert::Collider(collider) => {
-                        let triangles = Triangles::default();
-                        rasterize_collider_inner(collider, triangles)
-                    }
-                    GeometryToConvert::ParryTriMesh(vertices, triangles) =>                        
-                        Triangles::TriMesh(vertices.into_iter().map(Vec3::from).collect(), triangles)
-                },
-                area: geometry_collection.area,
-            })
-            .collect()
-    };
+    let triangle_collection: Vec<TriangleCollection> = convert_geometry(geometry_collections);
+    let voxelized_tile = build_heightfield_tile(&archipelago, &triangle_collection, &heightfield_collections);
+    let mut open_tile = build_open_heightfield_tile(voxelized_tile, &archipelago);
+    erode_walkable_area(&mut open_tile, &archipelago);    
+    calculate_distance_field(&mut open_tile, &archipelago);
+    build_regions(&mut open_tile, &archipelago);    
+    let contour_set = build_contours(&open_tile, &archipelago);
+    let poly_mesh = build_poly_mesh(contour_set, &archipelago, &open_tile);
+    create_nav_mesh_tile_from_poly_mesh(poly_mesh, &archipelago)
+}
 
-    let voxelized_tile = {
-        #[cfg(feature = "trace")]
-        let _span = info_span!("Build Heightfield Tile", name = "raven::build_tile").entered();
-        build_heightfield_tile(
-            &archipelago,
-            &triangle_collection,
-            &heightfield_collections,
-        )
-    };
-
-    let mut open_tile = {
-        #[cfg(feature = "trace")]
-        let _span = info_span!("Build Open Heightfield Tile", name = "raven::build_tile").entered();
-        build_open_heightfield_tile(voxelized_tile, &archipelago)
-    };
-
-    // Remove areas that are too close to a wall.
-    {
-        #[cfg(feature = "trace")]
-        let _span = info_span!("Erode walkable area", name = "raven::build_tile").entered();
-        erode_walkable_area(&mut open_tile, &archipelago);
-    }
-
-    {
-        #[cfg(feature = "trace")]
-        let _span = info_span!("Calculate distance field", name = "raven::build_tile").entered();
-        calculate_distance_field(&mut open_tile, &archipelago);
-    }
-    {
-        #[cfg(feature = "trace")]
-        let _span = info_span!("Build regions", name = "raven::build_tile").entered();
-        build_regions(&mut open_tile, &archipelago);
-    }
-
-    let contour_set = {
-        #[cfg(feature = "trace")]
-        let _span = info_span!("Build contours", name = "raven::build_tile").entered();
-        build_contours(&open_tile, &archipelago)
-    };
-
-    let poly_mesh = {
-        #[cfg(feature = "trace")]
-        let _span = info_span!("Build poly mesh", name = "raven::build_tile").entered();
-        build_poly_mesh(contour_set, &archipelago, &open_tile)
-    };
-
-    let nav_mesh_tile = {
-        #[cfg(feature = "trace")]
-        let _span = info_span!(
-            "Create nav-mesh tile from poly mesh",
-            name = "raven::build_tile"
-        )
-        .entered();
-        create_nav_mesh_tile_from_poly_mesh(poly_mesh, &archipelago)
-    };
-
-    nav_mesh_tile
+fn convert_geometry(geometry_collections: Vec<GeometryCollection>) -> Vec<TriangleCollection> {
+    #[cfg(feature = "trace")]
+    let _span = info_span!("Convert Geometry Collections", name = "raven::").entered();
+    geometry_collections
+        .into_iter()
+        .map(|geometry_collection| TriangleCollection {
+            transform: geometry_collection.transform,
+            triangles: match geometry_collection.geometry_to_convert {
+                GeometryToConvert::Collider(collider) => {
+                    let triangles = Triangles::default();
+                    rasterize_collider_inner(collider, triangles)
+                }
+                GeometryToConvert::ParryTriMesh(vertices, triangles) =>                        
+                    Triangles::TriMesh(vertices.into_iter().map(Vec3::from).collect(), triangles)
+            },
+            area: geometry_collection.area,
+        })
+        .collect()
 }

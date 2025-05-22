@@ -82,8 +82,7 @@ impl Plugin for RavenPlugin {
             .register_type::<CharacterSettings>()
             .register_type::<CharacterArchipelago>()
             .register_type::<TileAffectors>()
-            .register_type::<Tile>()
-            
+            .register_type::<Tile>()            
             .register_type::<Handle<NavigationMesh>>()
             .register_type::<TileNavMesh>()
             .register_type::<Archipelago>()

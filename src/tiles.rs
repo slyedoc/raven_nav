@@ -50,18 +50,18 @@ pub struct NavMeshTile {
     pub edges: Vec<[EdgeConnection; VERTICES_IN_TRIANGLE]>,
 }
 
-impl NavMeshTile {
-    /// Returns the closest point on ``polygon`` to ``position``.
-    pub fn get_closest_point_in_polygon(&self, polygon: &Polygon, position: Vec3) -> Vec3 {
-        let vertices: [Vec3; 3] = polygon.indices.map(|index| self.vertices[index as usize]);
+// impl NavMeshTile {
+//     /// Returns the closest point on ``polygon`` to ``position``.
+//     pub fn get_closest_point_in_polygon(&self, polygon: &Polygon, position: Vec3) -> Vec3 {
+//         let vertices: [Vec3; 3] = polygon.indices.map(|index| self.vertices[index as usize]);
 
-        if let Some(height) = get_height_in_triangle(&vertices, position) {
-            return Vec3::new(position.x, height, position.z);
-        }
+//         if let Some(height) = get_height_in_triangle(&vertices, position) {
+//             return Vec3::new(position.x, height, position.z);
+//         }
 
-        closest_point_on_edges(&vertices, position)
-    }
-}
+//         closest_point_on_edges(&vertices, position)
+//     }
+// }
 
 /// Container for all nav-mesh tiles. Used for pathfinding queries.
 ///
@@ -276,109 +276,109 @@ impl NavMeshTile {
 //     // }
 // }
 
-fn get_height_in_triangle(vertices: &[Vec3; VERTICES_IN_TRIANGLE], position: Vec3) -> Option<f32> {
-    if !in_polygon(vertices, position) {
-        return None;
-    }
+// fn get_height_in_triangle(vertices: &[Vec3; VERTICES_IN_TRIANGLE], position: Vec3) -> Option<f32> {
+//     if !in_polygon(vertices, position) {
+//         return None;
+//     }
 
-    if let Some(height) =
-        closest_height_in_triangle(vertices[0], vertices[1], vertices[2], position)
-    {
-        return Some(height);
-    }
+//     if let Some(height) =
+//         closest_height_in_triangle(vertices[0], vertices[1], vertices[2], position)
+//     {
+//         return Some(height);
+//     }
 
-    // We only hit this if we are ON an edge. Unlikely to happen.
-    let closest = closest_point_on_edges(vertices, position);
+//     // We only hit this if we are ON an edge. Unlikely to happen.
+//     let closest = closest_point_on_edges(vertices, position);
 
-    Some(closest.y)
-}
+//     Some(closest.y)
+// }
 
-fn closest_height_in_triangle(a: Vec3, b: Vec3, c: Vec3, position: Vec3) -> Option<f32> {
-    let v0 = c - a;
-    let v1 = b - a;
-    let v2 = position - a;
+// fn closest_height_in_triangle(a: Vec3, b: Vec3, c: Vec3, position: Vec3) -> Option<f32> {
+//     let v0 = c - a;
+//     let v1 = b - a;
+//     let v2 = position - a;
 
-    let mut denom = v0.x * v1.z - v0.z * v1.x;
-    const EPS: f32 = 0.000001;
-    if denom.abs() < EPS {
-        return None;
-    }
+//     let mut denom = v0.x * v1.z - v0.z * v1.x;
+//     const EPS: f32 = 0.000001;
+//     if denom.abs() < EPS {
+//         return None;
+//     }
 
-    let mut u = v1.z * v2.x - v1.x * v2.z;
-    let mut v = v0.x * v2.z - v0.z * v2.x;
+//     let mut u = v1.z * v2.x - v1.x * v2.z;
+//     let mut v = v0.x * v2.z - v0.z * v2.x;
 
-    if denom < 0.0 {
-        denom = -denom;
-        u = -u;
-        v = -v;
-    }
+//     if denom < 0.0 {
+//         denom = -denom;
+//         u = -u;
+//         v = -v;
+//     }
 
-    if u >= 0.0 && v >= 0.0 && (u + v) <= denom {
-        return Some(a.y + (v0.y * u + v1.y * v) / denom);
-    }
+//     if u >= 0.0 && v >= 0.0 && (u + v) <= denom {
+//         return Some(a.y + (v0.y * u + v1.y * v) / denom);
+//     }
 
-    None
-}
+//     None
+// }
 
-fn closest_point_on_edges(vertices: &[Vec3; VERTICES_IN_TRIANGLE], position: Vec3) -> Vec3 {
-    let mut d_min = f32::INFINITY;
-    let mut t_min = 0.0;
+// fn closest_point_on_edges(vertices: &[Vec3; VERTICES_IN_TRIANGLE], position: Vec3) -> Vec3 {
+//     let mut d_min = f32::INFINITY;
+//     let mut t_min = 0.0;
 
-    let mut edge_min = Vec3::ZERO;
-    let mut edge_max = Vec3::ZERO;
+//     let mut edge_min = Vec3::ZERO;
+//     let mut edge_max = Vec3::ZERO;
 
-    for i in 0..vertices.len() {
-        let prev = (vertices.len() + i - 1) % vertices.len();
+//     for i in 0..vertices.len() {
+//         let prev = (vertices.len() + i - 1) % vertices.len();
 
-        let (d, t) = distance_point_to_segment_2d(position, vertices[prev], vertices[i]);
-        if d < d_min {
-            d_min = d;
-            t_min = t;
-            edge_min = vertices[prev];
-            edge_max = vertices[i];
-        }
-    }
+//         let (d, t) = distance_point_to_segment_2d(position, vertices[prev], vertices[i]);
+//         if d < d_min {
+//             d_min = d;
+//             t_min = t;
+//             edge_min = vertices[prev];
+//             edge_max = vertices[i];
+//         }
+//     }
 
-    edge_min.lerp(edge_max, t_min)
-}
+//     edge_min.lerp(edge_max, t_min)
+// }
 
-fn distance_point_to_segment_2d(point: Vec3, seg_a: Vec3, seg_b: Vec3) -> (f32, f32) {
-    let ba_x = seg_b.x - seg_a.x;
-    let ba_z = seg_b.z - seg_a.z;
+// fn distance_point_to_segment_2d(point: Vec3, seg_a: Vec3, seg_b: Vec3) -> (f32, f32) {
+//     let ba_x = seg_b.x - seg_a.x;
+//     let ba_z = seg_b.z - seg_a.z;
 
-    let dx = point.x - seg_a.x;
-    let dz = point.z - seg_a.z;
+//     let dx = point.x - seg_a.x;
+//     let dz = point.z - seg_a.z;
 
-    let d = ba_x * ba_x + ba_z * ba_z;
-    let mut t = ba_x * dx + ba_z * dz;
-    if d > 0.0 {
-        t /= d;
-    }
-    t = t.clamp(0.0, 1.0);
+//     let d = ba_x * ba_x + ba_z * ba_z;
+//     let mut t = ba_x * dx + ba_z * dz;
+//     if d > 0.0 {
+//         t /= d;
+//     }
+//     t = t.clamp(0.0, 1.0);
 
-    let dx = seg_a.x + t * ba_x - point.x;
-    let dz = seg_a.z + t * ba_z - point.z;
+//     let dx = seg_a.x + t * ba_x - point.x;
+//     let dz = seg_a.z + t * ba_z - point.z;
 
-    (dx * dx + dz * dz, t)
-}
+//     (dx * dx + dz * dz, t)
+// }
 
-fn in_polygon(vertices: &[Vec3; VERTICES_IN_TRIANGLE], position: Vec3) -> bool {
-    let mut inside = false;
+// fn in_polygon(vertices: &[Vec3; VERTICES_IN_TRIANGLE], position: Vec3) -> bool {
+//     let mut inside = false;
 
-    for i in 0..vertices.len() {
-        let prev = (vertices.len() + i - 1) % vertices.len();
+//     for i in 0..vertices.len() {
+//         let prev = (vertices.len() + i - 1) % vertices.len();
 
-        let a = vertices[i];
-        let b = vertices[prev];
-        if ((a.z > position.z) != (b.z > position.z))
-            && (position.x < (b.x - a.x) * (position.z - a.z) / (b.z - a.z) + a.x)
-        {
-            inside = !inside;
-        }
-    }
+//         let a = vertices[i];
+//         let b = vertices[prev];
+//         if ((a.z > position.z) != (b.z > position.z))
+//             && (position.x < (b.x - a.x) * (position.z - a.z) / (b.z - a.z) + a.x)
+//         {
+//             inside = !inside;
+//         }
+//     }
 
-    inside
-}
+//     inside
+// }
 
 // fn remove_links_to_direction(tile: &mut NavMeshTile, remove_direction: EdgeConnectionDirection) {
 //     for polygon in tile.polygons.iter_mut() {
@@ -603,6 +603,9 @@ pub(super) fn create_nav_mesh_tile_from_poly_mesh(
     poly_mesh: PolyMesh,
     archipelago: &Archipelago,
 ) -> NavMeshTile {
+    #[cfg(feature = "trace")]
+    let _span = info_span!("raven::create_nav_mesh_tile_from_poly_mesh").entered();
+
     // Slight worry that the compiler won't optimize this but damn, it's cool.
     let polygons = poly_mesh
         .polygons

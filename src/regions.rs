@@ -1,3 +1,5 @@
+use bevy::log::info_span;
+
 use crate::{
     Area,
     heightfields::{OpenSpan, OpenTile},
@@ -18,6 +20,9 @@ const LOG_NB_STACKS: i32 = 3;
 const NB_STACKS: i32 = 1 << LOG_NB_STACKS; // 8.
 
 pub fn build_regions(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
+    #[cfg(feature = "trace")]
+    let _span = info_span!("raven::build_regions").entered();
+    
     let tile_side = vox_settings.get_tile_side_with_border();
     let mut regions = vec![0; open_tile.span_count];
     let mut distances = vec![0; open_tile.span_count];

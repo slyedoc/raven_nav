@@ -69,6 +69,10 @@ pub(super) fn build_heightfield_tile(
     triangle_collections: &[TriangleCollection],
     heightfields: &[HeightFieldCollection],
 ) -> VoxelizedTile {
+
+    #[cfg(feature = "trace")]
+    let _span = info_span!("raven::build_heightfield_tile").entered();
+    
     let tile_side = config.get_tile_side_with_border();
     let mut voxel_tile = VoxelizedTile {
         cells: vec![VoxelCell::default(); tile_side.pow(2)].into_boxed_slice(),
@@ -162,6 +166,8 @@ pub(super) fn build_heightfield_tile(
     voxel_tile
 }
 
+
+// TODO: This is the hot path and should be optimized.
 #[allow(clippy::too_many_arguments)]
 fn process_triangle(
     a: Vec3A,
@@ -395,10 +401,16 @@ fn divide_polygon(
     }
 }
 
+
 pub fn build_open_heightfield_tile(
     voxelized_tile: VoxelizedTile,
     vox_settings: &Archipelago,
 ) -> OpenTile {
+
+    #[cfg(feature = "trace")]
+    let _span = info_span!("raven::build_open_heightfield_tile").entered();
+
+
     let mut cells = vec![OpenCell::default(); voxelized_tile.cells.len()];
     let mut span_count = 0;
 
@@ -530,6 +542,9 @@ fn link_neighbours(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
 }
 
 pub fn erode_walkable_area(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
+    #[cfg(feature = "trace")]
+    let _span = info_span!("raven::erode_walkable_area").entered();
+
     let tile_side = vox_settings.get_tile_side_with_border();
     // Mark boundary cells.
     for (i, cell) in open_tile.cells.iter().enumerate() {
@@ -568,6 +583,9 @@ pub fn erode_walkable_area(open_tile: &mut OpenTile, vox_settings: &Archipelago)
 }
 
 pub fn calculate_distance_field(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
+    #[cfg(feature = "trace")]
+    let _span = info_span!("raven::calculate_distance_field").entered();
+
     let tile_side = vox_settings.get_tile_side_with_border();
     // Mark boundary cells.
     for (i, cell) in open_tile.cells.iter().enumerate() {
