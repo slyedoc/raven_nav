@@ -1,4 +1,3 @@
-
 use std::sync::Arc;
 
 use agent::{Agent, AgentArchipelago, AgentSettings};
@@ -8,13 +7,12 @@ use character::{Character, CharacterArchipelago};
 use collider::{GeometryResult, get_geometry_type};
 use contour::build_contours;
 use conversion::GeometryCollection;
-use heightfields::
-    HeightFieldCollection
-;
+use heightfields::HeightFieldCollection;
 
 mod agent;
 mod collider;
 use collider::*;
+mod archipelago;
 mod contour;
 mod conversion;
 #[cfg(feature = "debug_draw")]
@@ -25,7 +23,6 @@ mod math;
 mod mesher;
 mod regions;
 mod tiles;
-mod archipelago;
 use archipelago::*;
 mod character;
 use character::*;
@@ -36,11 +33,7 @@ use nav_mesh::*;
 mod bounding_box;
 
 use avian3d::{
-    parry::{
-        math::Isometry,
-        na::Vector3,
-        shape::HeightField,
-    },
+    parry::{math::Isometry, na::Vector3, shape::HeightField},
     prelude::*,
 };
 use bevy::{
@@ -48,7 +41,7 @@ use bevy::{
     math::bounding::Aabb3d,
     platform::collections::HashSet,
     prelude::*,
-    tasks::{futures_lite::future, AsyncComputeTaskPool},
+    tasks::{AsyncComputeTaskPool, futures_lite::future},
 };
 use tiles::{NavMeshTile, create_nav_mesh_tile_from_poly_mesh};
 
@@ -87,7 +80,8 @@ impl Plugin for RavenPlugin {
             .register_type::<CharacterSettings>()
             .register_type::<CharacterArchipelago>()
             .register_type::<TileAffectors>()
-            .register_type::<Tile>()
+            .register_type::<Tile>()            
+            .register_type::<Handle<NavigationMesh>>()
             .register_type::<TileNavMesh>()
             .register_type::<Archipelago>()
             .register_type::<archipelago::TileLookup>()
@@ -164,15 +158,14 @@ fn archipelago_changed(
 
         let mut x_f = -arch.world_half_extents.x;
         let mut x_i = 0;
-        let mut y_f = -arch.world_half_extents.y;
-        let mut y_i = 0;
+        let mut z_f = -arch.world_half_extents.z;
+        let mut z_i = 0;
 
-        while y_f < arch.world_half_extents.y {
+        while z_f < arch.world_half_extents.z {
             while x_f < arch.world_half_extents.x {
-                let tile = UVec2::new(x_i, y_i);
-                let translation = Vec3::new(x_f + half_tile_size, 0., y_f + half_tile_size);
-                let tile_half_extends =
-                    Vec3::new(half_tile_size, arch.world_half_extents.y, half_tile_size);
+                let tile = UVec2::new(x_i, z_i);
+                let translation = Vec3::new(x_f + half_tile_size, 0., z_f + half_tile_size);
+                let tile_half_extends = Vec3::new(half_tile_size, arch.world_half_extents.y, half_tile_size);
 
                 let tile_id = commands
                     .spawn((
@@ -193,8 +186,8 @@ fn archipelago_changed(
             x_f = -arch.world_half_extents.x;
             x_i = 0;
 
-            y_f += title_size;
-            y_i += 1;
+            z_f += title_size;
+            z_i += 1;
         }
 
         // Hack: Since we need to update TileAffectors for any existing NavMeshAffectors, we add a marker component to all NavMeshAffectors
@@ -209,7 +202,7 @@ fn archipelago_changed(
 /// Converts the [`NavMeshTile`] into the corresponding [`PreNavigationMesh`].
 fn tile_to_landmass_nav_mesh(tile: NavMeshTile) -> PreNavigationMesh {
     PreNavigationMesh {
-        vertices: tile.vertices.to_vec(),
+        vertices: tile.vertices,
         polygons: tile
             .polygons
             .iter()
@@ -317,24 +310,19 @@ fn start_tile_build_tasks(
     mut commands: Commands,
     mut tiles_to_generate: Local<Vec<UVec2>>,
     mut heightfields: Local<EntityHashMap<Arc<HeightField>>>,
-    mut archipelago_query: Query<(        
+    mut archipelago_query: Query<(
         &Archipelago,
         &TileLookup,
         &mut DirtyTiles,
         &mut ActiveGenerationTasks,
     )>,
-    mut tile_query: Query<(&TileAffectors, &mut TileGeneration, &GlobalTransform), With<Tile>>,
+    mut tile_query: Query<(&TileAffectors, &GlobalTransform), With<Tile>>,
     collider_query: Query<(Entity, &Collider, &GlobalTransform, &NavMeshAffector)>,
 ) {
     let thread_pool = AsyncComputeTaskPool::get();
 
-    for (
-        archipelago,
-        tile_lookup,
-        mut dirty_tiles,
-        
-        mut active_generation_tasks,
-    ) in archipelago_query.iter_mut()
+    for (archipelago, tile_lookup, mut dirty_tiles, mut active_generation_tasks) in
+        archipelago_query.iter_mut()
     {
         // see if we can start a new task
         let max = archipelago.max_tile_generation_tasks.get() as usize;
@@ -350,8 +338,7 @@ fn start_tile_build_tasks(
             dirty_tiles.0.remove(&tile_coord);
 
             let tile_enity = tile_lookup.get(&tile_coord).unwrap();
-            let (affectors, mut tile_generation, tile_transform) =
-                tile_query.get_mut(*tile_enity).unwrap();
+            let (affectors, tile_transform) = tile_query.get_mut(*tile_enity).unwrap();
 
             // if tile has no affectors, remove it
             if affectors.is_empty() {
@@ -372,7 +359,7 @@ fn start_tile_build_tasks(
 
                 // Convert the collider's transform to the tile's local space
                 let transform = GlobalTransform::from(
-                    collider_transform.affine() * tile_transform.affine().inverse(),
+                    tile_transform.affine().inverse() * collider_transform.affine(),
                 );
 
                 handle_geometry_result(
@@ -386,17 +373,18 @@ fn start_tile_build_tasks(
                 );
             }
 
-            // Step 2: Start Build Task.
-            tile_generation.0 += 1;
-            let task = thread_pool.spawn(build_tile(
-                archipelago.clone(),
-                geometry_collections,
-                heightfield_collections,
-            ));
+            // Step 2: Clear any build tasks for this tile
+            active_generation_tasks.retain(|job| job.entity != *tile_enity);
+
+            // Step 3: Start Build Task.
             active_generation_tasks.0.push(NavMeshGenerationJob {
                 entity: *tile_enity,
-                generation: tile_generation.0,
-                task: task,
+                //generation: tile_generation.0,
+                task: thread_pool.spawn(build_tile(
+                    archipelago.clone(),
+                    geometry_collections,
+                    heightfield_collections,
+                )),
             });
         }
         heightfields.clear();
@@ -406,46 +394,24 @@ fn start_tile_build_tasks(
 /// Updates the island (or creates one) corresponding to the tile when a tile is generated.
 fn update_tile_build_tasks(
     mut commands: Commands,
-    mut archipelago_query: Query<&mut ActiveGenerationTasks, With<Archipelago>>,
-    tile_query: Query<&TileGeneration, With<Tile>>,
+    mut archipelago_query: Query<&mut ActiveGenerationTasks, With<Archipelago>>,    
     mut nav_meshes: ResMut<Assets<NavigationMesh>>,
 ) {
     for mut tasks in archipelago_query.iter_mut() {
         // check active tasks, canceling if not current
         tasks.0.retain_mut(|job| {
-            // check if the task is still current
-            match tile_query.get(job.entity) {
-                Ok(tile_generation) => {
-                    if tile_generation.0 != job.generation {
-                        // The task is not most current, so we can stop it.
-                        // warn!(
-                        //     "Tile {:?} generation task is not most current, stopping task",
-                        //     job.entity
-                        // );
-                        // job.task.cancel() // would like to cancel it, but drop will have to do
-                        return false;
-                    }
-                }
-                _ => {
-                    // Tile entity was despawned, so we can stop the task.
-                    // warn!(
-                    //     "Tile {:?} for generation task not found, stopping task",
-                    //     job.entity
-                    // );
-                    // job.task.cancel() // would like to cancel it, but drop will have to do
-                    return false;
-                }
-            }
-
             if let Some(nav_mesh_tile) = future::block_on(future::poll_once(&mut job.task)) {
                 // Generation complete
                 let pre_nav_mesh = tile_to_landmass_nav_mesh(nav_mesh_tile);
-                info!("Tile {:?} generated {}", job.entity, job.generation);
+                
                 match pre_nav_mesh.validate() {
                     Ok(nav_mesh) => {
+
+                        let nav_mesh_handle = nav_meshes.add(nav_mesh);
+                        info!("Tile {:?} generated {:?}", job.entity, nav_mesh_handle.id());
                         commands
                             .entity(job.entity)
-                            .insert(TileNavMesh(nav_meshes.add(nav_mesh)));
+                            .insert(TileNavMesh(nav_mesh_handle));
                     }
                     Err(err) => {
                         warn!("Failed to validate oxidized_navigation tile: {err:?}");

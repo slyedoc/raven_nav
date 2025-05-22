@@ -2,10 +2,7 @@ mod common; // helper functions
 use common::*;
 
 use avian3d::prelude::*;
-use bevy::{
-    input::common_conditions::input_just_pressed,
-    prelude::*,
-};
+use bevy::{input::common_conditions::input_just_pressed, prelude::*};
 use raven::prelude::*;
 use sly_editor::IsEditorCamera;
 
@@ -60,10 +57,24 @@ fn setup(
     ));
 
     // first archipelago
-    generate_area( &mut commands, &mut meshes, &mut materials, 1, Vec3::new(-40.0, 0.0, 0.0), 50.0);
+    generate_area(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        1,
+        Vec3::new(-40.0, 0.0, 0.0),
+        50.0,
+    );
 
     // second archipelago
-    generate_area( &mut commands, &mut meshes, &mut materials, 2, Vec3::new(40.0, 0.0, 0.0), 50.0);    
+    generate_area(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        2,
+        Vec3::new(40.0, 0.0, 0.0),
+        50.0,
+    );
 
     commands.spawn((
         Name::new("Text"),
@@ -87,12 +98,12 @@ fn generate_area(
     materials: &mut Assets<StandardMaterial>,
     index: usize,
     translation: Vec3,
-    size: f32
+    size: f32,
 ) {
     commands.spawn((
         Name::new(format!("Archipelago {}", index)),
         Archipelago::new(0.5, 1.9, Vec3::splat(size)),
-        Transform::from_translation(translation)            
+        Transform::from_translation(translation),
     ));
 
     // heightfield

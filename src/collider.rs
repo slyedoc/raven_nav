@@ -1,16 +1,13 @@
-use avian3d::
-    parry::{
-        math::Isometry,
-        shape::{HeightField, TypedShape},
-    }
-;
-use bevy::prelude::*;
 use crate::conversion::{ColliderType, GeometryToConvert};
+use avian3d::parry::{
+    math::Isometry,
+    shape::{HeightField, TypedShape},
+};
+use bevy::prelude::*;
 
 /// Add this to any compoent with a Collider to indicate that it is a nav-mesh affector.
 #[derive(Component, Default, Reflect)]
 pub struct NavMeshAffector(pub Area);
-
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Reflect)]
 pub struct Area(pub u16);

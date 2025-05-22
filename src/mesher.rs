@@ -4,8 +4,11 @@ use bevy::{
     prelude::{UVec2, UVec4},
 };
 
-use crate::{Area, contour::ContourSet, detail_mesh::build_detail_mesh, heightfields::OpenTile, archipelago::Archipelago};
 use super::math::{intersect, intersect_prop, left, left_on};
+use crate::{
+    Area, archipelago::Archipelago, contour::ContourSet, detail_mesh::build_detail_mesh,
+    heightfields::OpenTile,
+};
 
 #[derive(Default, Debug)]
 pub struct PolyMesh {

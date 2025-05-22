@@ -2,7 +2,6 @@ use bevy::prelude::*;
 
 use crate::archipelago::ArchipelagoAgents;
 
-
 #[derive(Component, Reflect)]
 #[require(
     Transform,
@@ -10,7 +9,7 @@ use crate::archipelago::ArchipelagoAgents;
     AgentTarget,
     AgentState,
     AgentDesiredVelocity,
-    AgentSettings,
+    AgentSettings
 )]
 pub struct Agent;
 
@@ -79,8 +78,3 @@ pub enum AgentState {
 
 #[derive(Component, Default)]
 pub struct AgentDesiredVelocity(pub Vec3);
-
-
-
-
-

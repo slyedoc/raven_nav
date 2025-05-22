@@ -6,7 +6,10 @@ use bevy::{
 };
 
 use crate::{
-    get_neighbour_index, heightfields::{OpenSpan, OpenTile}, archipelago::Archipelago, collider::Area
+    archipelago::Archipelago,
+    collider::Area,
+    get_neighbour_index,
+    heightfields::{OpenSpan, OpenTile},
 };
 
 use super::math::{in_cone, intersect};
@@ -39,10 +42,7 @@ struct ContourRegion {
     holes: Vec<ContourHole>,
 }
 
-pub(crate) fn build_contours(
-    open_tile: &OpenTile,
-    vox_settings: &Archipelago,
-) -> ContourSet {
+pub(crate) fn build_contours(open_tile: &OpenTile, vox_settings: &Archipelago) -> ContourSet {
     let max_contours = open_tile.max_regions.max(8);
     let mut contour_set = ContourSet {
         contours: Vec::with_capacity(max_contours.into()),

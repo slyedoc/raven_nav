@@ -6,7 +6,11 @@ pub use sly_editor::*;
 mod archipelago_movement;
 pub use archipelago_movement::*;
 
-use bevy::{asset::RenderAssetUsages, prelude::*, render::mesh::{Indices, PrimitiveTopology}};
+use bevy::{
+    asset::RenderAssetUsages,
+    prelude::*,
+    render::mesh::{Indices, PrimitiveTopology},
+};
 
 /// A plugin that adds common functionality used by examples,
 /// such as physics diagnostics UI and the ability to pause and step the simulation.
@@ -18,7 +22,7 @@ impl Plugin for ExampleCommonPlugin {
         app.add_plugins((
             SlyEditorPlugin::default(), // custom bevy_egui_inspector and avian editor
             EnhancedInputPlugin,
-            CameraFreePlugin, // camera movement
+            CameraFreePlugin,          // camera movement
             ArchipelagoMovementPlugin, // arch movement, used to test rebuilds
         ))
         .add_systems(Startup, setup_key_instructions);
@@ -59,7 +63,7 @@ pub fn generate_mesh_from_heightfield(
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(num_vertices);
     let mut indices: Vec<u32> = Vec::with_capacity(num_indices);
 
-    let half_size = (size - 1) as f32  / 2.0;
+    let half_size = (size - 1) as f32 / 2.0;
     for y in 0..size {
         for x in 0..size {
             let i = (y * size) + x;

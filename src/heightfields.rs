@@ -64,10 +64,10 @@ pub struct HeightFieldCollection {
     pub area: Option<Area>,
 }
 
-pub(super) fn build_heightfield_tile(    
+pub(super) fn build_heightfield_tile(
     config: &Archipelago,
     triangle_collections: &[TriangleCollection],
-    heightfields: &[HeightFieldCollection],    
+    heightfields: &[HeightFieldCollection],
 ) -> VoxelizedTile {
     let tile_side = config.get_tile_side_with_border();
     let mut voxel_tile = VoxelizedTile {

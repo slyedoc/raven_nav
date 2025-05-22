@@ -1,8 +1,11 @@
-use crate::{agent::*,character::*,tile::*, tiles::NavMeshTile};
-use bevy::{prelude::*, tasks::Task, platform::collections::{HashMap, HashSet}};
+use crate::{agent::*, character::*, tile::*, tiles::NavMeshTile};
+use bevy::{
+    platform::collections::{HashMap, HashSet},
+    prelude::*,
+    tasks::Task,
+};
+use bevy_inspector_egui::{inspector_options::std_options::NumberDisplay, prelude::*};
 use std::num::{NonZeroU8, NonZeroU16};
-use bevy_inspector_egui::{prelude::*, inspector_options::std_options::NumberDisplay};
-
 
 /// Will have [`Agents`] and [`Characters`] updated when agents and characters are added
 #[derive(Component, Reflect, Debug, Clone, InspectorOptions)]
@@ -12,12 +15,11 @@ use bevy_inspector_egui::{prelude::*, inspector_options::std_options::NumberDisp
     ArchipelagoAgents,
     ArchipelagoCharacters,
     ArchipelagoTiles,
-    TileLookup,    
+    TileLookup,
     DirtyTiles,
-    ActiveGenerationTasks,    
+    ActiveGenerationTasks
 )]
 pub struct Archipelago {
-    
     /// Extents of the world as measured from the world origin (0.0, 0.0) on the XZ-plane.
     ///
     /// **Suggested value**: As small as possible whilst still keeping the entire world within it.
@@ -25,9 +27,8 @@ pub struct Archipelago {
     /// This exists because figuring out which tile we are in around the world origin would not work without it.
     //#[inspector(min = Vec3::new(1.0, 1.0, 1.0), max = Vec3::new(1000.0, 1000.0, 1000.0))]
     pub world_half_extents: Vec3,
-    
+
     // Voxelization settings
- 
     /// The horizontal resolution of the voxelized tile.
     ///
     /// **Suggested value**: 1/2 of character radius.
@@ -35,7 +36,7 @@ pub struct Archipelago {
     /// Smaller values will increase tile generation times with diminishing returns in nav-mesh detail.
     #[inspector(min = 0.1, max = 1.0, speed = 0.1, display = NumberDisplay::Slider)]
     pub cell_width: f32,
-    
+
     /// The vertical resolution of the voxelized tile.
     ///
     /// **Suggested value**: 1/2 of cell_width.
@@ -51,12 +52,10 @@ pub struct Archipelago {
     /// Higher means more to update each time something within the tile changes, smaller means you will have more overhead from connecting the edges to other tiles & generating the tile itself.
     pub tile_width: NonZeroU16,
 
-    
     // /// Bottom extents of the world on the Y-axis. The top extents is capped by ``world_bottom_bound + cell_height * u16::MAX``.
     // ///
     // /// **Suggested value**: Minium Y position of anything in the world that should be covered by the nav mesh.
     // pub world_bottom_bound: f32,
-
     /// Maximum incline/slope traversable when navigating in radians.
     #[inspector(min = 0.0, max = 90.0, speed = 1.0, display = NumberDisplay::Slider)]
     pub max_traversable_slope_degrees: f32,
@@ -99,7 +98,6 @@ pub struct Archipelago {
     pub experimental_detail_mesh_generation: Option<DetailMeshSettings>,
 
     // Navigation settings
-
     /// The options for sampling agent and target points.
     pub point_sample_distance: PointSampleDistance,
     /// The distance that an agent will consider avoiding another agent.
@@ -118,11 +116,7 @@ pub struct Archipelago {
 }
 
 impl Archipelago {
-    pub fn new(
-        agent_radius: f32,
-        agent_height: f32,
-        size: Vec3,        
-    ) -> Self {
+    pub fn new(agent_radius: f32, agent_height: f32, size: Vec3) -> Self {
         let cell_width = agent_radius / 2.0;
         let cell_height = agent_radius / 4.0;
 
@@ -133,7 +127,7 @@ impl Archipelago {
             cell_width,
             cell_height,
             tile_width: NonZeroU16::new(120).unwrap(),
-            
+
             max_traversable_slope_degrees: 50.0,
             walkable_height,
             walkable_radius: 2,
@@ -156,10 +150,9 @@ impl Archipelago {
                 distance_below: agent_radius,
                 vertical_preference_ratio: 2.0,
             },
-
         }
     }
-    
+
     /// Setter for [`NavMeshSettings::walkable_radius`]
     pub fn with_walkable_radius(mut self, walkable_radius: u16) -> Self {
         self.walkable_radius = walkable_radius;
@@ -179,10 +172,7 @@ impl Archipelago {
         self
     }
     /// Setter for [`NavMeshSettings::max_tile_generation_tasks`]
-    pub fn with_max_tile_generation_tasks(
-        mut self,
-        max_tile_generation_tasks: NonZeroU16,
-    ) -> Self {
+    pub fn with_max_tile_generation_tasks(mut self, max_tile_generation_tasks: NonZeroU16) -> Self {
         self.max_tile_generation_tasks = max_tile_generation_tasks;
 
         self
@@ -244,13 +234,20 @@ impl Archipelago {
         f32::from(self.walkable_radius) * self.cell_width
     }
 
-
     /// Returns the tile coordinate that contains the supplied ``world_position``.
     // TODO: this assumes position is always in contained, and only checking xz
     #[inline]
-    pub fn get_tile_containing_position(&self, world_position: Vec2, transform: &GlobalTransform) -> UVec2 {
-        let local = transform.affine().inverse().transform_point(Vec3::new(world_position.x, 0., world_position.y));
-    
+    pub fn get_tile_containing_position(
+        &self,
+        world_position: Vec2,
+        transform: &GlobalTransform,
+    ) -> UVec2 {
+        let local = transform.affine().inverse().transform_point(Vec3::new(
+            world_position.x,
+            0.,
+            world_position.y,
+        ));
+
         let x = local.x + self.world_half_extents.x;
         let z = local.z + self.world_half_extents.z;
 
@@ -266,23 +263,19 @@ impl Archipelago {
 
     /// Returns the minimum bound of a tile in local space.
     #[inline]
-    pub fn get_tile_minimum_bound(&self) -> Vec3 {                
+    pub fn get_tile_minimum_bound(&self) -> Vec3 {
         Vec3::new(
             -self.get_tile_size() / 2.0,
             -self.world_half_extents.y,
             -self.get_tile_size() / 2.0,
         )
     }
-    
+
     /// Returns the origin of a tile on the XZ-plane including the border area.
     #[inline]
-    pub fn get_tile_minimum_bound_with_border(&self) -> Vec3 {        
+    pub fn get_tile_minimum_bound_with_border(&self) -> Vec3 {
         let boarder_size = self.get_border_size();
-        self.get_tile_minimum_bound() - Vec3::new(
-            boarder_size,
-            0.0,
-            boarder_size,
-        )
+        self.get_tile_minimum_bound() - Vec3::new(boarder_size, 0.0, boarder_size)
     }
 
     #[inline]
@@ -304,21 +297,20 @@ impl Default for Archipelago {
 
 #[test]
 fn test_tile_origin() {
-    
     let arch = Archipelago::new(0.5, 2.0, Vec3::new(100.0, 20.0, 100.0));
-    let tile_size = arch.get_tile_size();    
+    let tile_size = arch.get_tile_size();
     assert_eq!(tile_size, 30.0); // agent radius * half * tile width
 
     // let global_trans = GlobalTransform::IDENTITY;
-    // let a = arch.get_tile_origin(UVec2::new(0, 0), &global_trans);    
+    // let a = arch.get_tile_origin(UVec2::new(0, 0), &global_trans);
     // assert_eq!(a, Vec3::new(-50.0, -10.0, -50.0));
-    // let b = arch.get_tile_origin(UVec2::new(1, 0), &global_trans);    
+    // let b = arch.get_tile_origin(UVec2::new(1, 0), &global_trans);
     // assert_eq!(b, Vec3::new(-20.0, -10.0, -50.0));
-    // let c = arch.get_tile_origin(UVec2::new(1, 1), &global_trans);    
+    // let c = arch.get_tile_origin(UVec2::new(1, 1), &global_trans);
     // assert_eq!(c, Vec3::new(-20.0, -10.0, -20.0));
 
     // let global_trans = GlobalTransform::from(
-    //     Transform::from_translation(Vec3::new(10.0, 0.0, 10.0))            
+    //     Transform::from_translation(Vec3::new(10.0, 0.0, 10.0))
     // );
     // let a = arch.get_tile_origin(UVec2::new(0, 0), &global_trans);
     // assert_eq!(a, Vec3::new(-40.0, -10.0, -40.0));
@@ -327,12 +319,12 @@ fn test_tile_origin() {
 #[test]
 fn test_tile_tile_containing_position() {
     let arch = Archipelago::new(0.5, 2.0, Vec3::new(100.0, 20.0, 100.0));
-    let tile_size = arch.get_tile_size();    
+    let tile_size = arch.get_tile_size();
     assert_eq!(tile_size, 30.0); // agent radius * half * tile width
 
     // let global_trans = GlobalTransform::IDENTITY;
 
-    // let a = arch.get_tile_containing_position(Vec2::new(-50.0, -50.0), &global_trans);    
+    // let a = arch.get_tile_containing_position(Vec2::new(-50.0, -50.0), &global_trans);
     // assert_eq!(a, UVec2::new(0, 0));
 
     // let b = arch.get_tile_containing_position(Vec2::new(-20., -50.0), &global_trans);
@@ -364,15 +356,14 @@ pub struct TileLookup(pub HashMap<UVec2, Entity>);
 #[derive(Default, Component, Reflect, Deref, DerefMut)]
 pub struct DirtyTiles(pub HashSet<UVec2>);
 
-
 /// List of tasks that are currently generating tiles.
 #[derive(Component, Default, Deref, DerefMut)]
 pub struct ActiveGenerationTasks(pub Vec<NavMeshGenerationJob>);
 
 /// A task that is generating a nav-mesh tile.
-pub struct NavMeshGenerationJob {    
+pub struct NavMeshGenerationJob {
     pub entity: Entity,
-    pub generation: u64,
+    // pub generation: u64,
     pub task: Task<NavMeshTile>,
 }
 
@@ -388,7 +379,6 @@ pub struct DetailMeshSettings {
     /// **Suggested value:** >=2. Start high & reduce as needed.  
     pub sample_step: NonZeroU8,
 }
-
 
 #[derive(Reflect, Debug, PartialEq, Clone)]
 pub struct PointSampleDistance {

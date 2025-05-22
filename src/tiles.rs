@@ -2,7 +2,8 @@ use bevy::prelude::*;
 use smallvec::SmallVec;
 
 use crate::{
-    Area, archipelago::Archipelago,
+    Area,
+    archipelago::Archipelago,
     mesher::{EdgeConnection, EdgeConnectionDirection, VERTICES_IN_TRIANGLE},
 };
 
@@ -599,8 +600,8 @@ fn in_polygon(vertices: &[Vec3; VERTICES_IN_TRIANGLE], position: Vec3) -> bool {
 // }
 
 pub(super) fn create_nav_mesh_tile_from_poly_mesh(
-    poly_mesh: PolyMesh,    
-    archipelago: &Archipelago,    
+    poly_mesh: PolyMesh,
+    archipelago: &Archipelago,
 ) -> NavMeshTile {
     // Slight worry that the compiler won't optimize this but damn, it's cool.
     let polygons = poly_mesh

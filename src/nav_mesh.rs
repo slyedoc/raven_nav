@@ -60,7 +60,8 @@ impl PreNavigationMesh {
             ));
         }
 
-        let mesh_bounds = Aabb::enclosing(self.vertices.iter()).expect("should have been at least 1 vertex");
+        let mesh_bounds =
+            Aabb::enclosing(self.vertices.iter()).expect("should have been at least 1 vertex");
         let mut region_sets = DisjointSet::with_len(self.polygons.len());
 
         enum ConnectivityState {

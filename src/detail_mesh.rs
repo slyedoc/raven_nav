@@ -8,8 +8,8 @@ use bevy::{
 use bevy::log::info_span;
 
 use crate::{
-    get_neighbour_index,
     archipelago::Archipelago,
+    get_neighbour_index,
     heightfields::OpenTile,
     mesher::{PolyMesh, VERTICES_IN_TRIANGLE},
 };
@@ -252,12 +252,10 @@ fn extract_height_data(
             let x = neighbour_i % tile_side;
             let y = neighbour_i / tile_side;
 
-            let height_patch_x = x as isize
-                - height_patch.min_x as isize
-                - vox_settings.walkable_radius as isize;
-            let height_patch_y = y as isize
-                - height_patch.min_y as isize
-                - vox_settings.walkable_radius as isize;
+            let height_patch_x =
+                x as isize - height_patch.min_x as isize - vox_settings.walkable_radius as isize;
+            let height_patch_y =
+                y as isize - height_patch.min_y as isize - vox_settings.walkable_radius as isize;
 
             if height_patch_x < 0
                 || height_patch_y < 0

@@ -3,11 +3,7 @@ use bevy::prelude::*;
 use crate::{agent::Velocity, archipelago::ArchipelagoCharacters};
 
 #[derive(Component, Reflect)]
-#[require(
-    Transform,
-    Velocity,    
-    CharacterSettings,
-)]
+#[require(Transform, Velocity, CharacterSettings)]
 pub struct Character;
 
 /// Ref to Archipelago, added if not present when Character is added
@@ -19,21 +15,12 @@ pub struct CharacterArchipelago(pub Entity);
 /// components.
 #[derive(Component, Debug, Reflect)]
 pub struct CharacterSettings {
-  /// The radius of the character.
-  pub radius: f32,
+    /// The radius of the character.
+    pub radius: f32,
 }
 
 impl Default for CharacterSettings {
-  fn default() -> Self {
-    Self {
-      radius: 0.5,
+    fn default() -> Self {
+        Self { radius: 0.5 }
     }
-  }
 }
-
-
-
-
-
-
-

@@ -1,15 +1,19 @@
 use bevy::{platform::collections::HashSet, prelude::*};
 
-use crate::{archipelago::ArchipelagoTiles, build_contours, conversion::*, create_nav_mesh_tile_from_poly_mesh, heightfields::*, mesher::build_poly_mesh, nav_mesh::NavigationMesh, prelude::Archipelago, regions::build_regions, tiles::NavMeshTile};
+use crate::{
+    archipelago::ArchipelagoTiles, build_contours, conversion::*,
+    create_nav_mesh_tile_from_poly_mesh, heightfields::*, mesher::build_poly_mesh,
+    nav_mesh::NavigationMesh, prelude::Archipelago, regions::build_regions, tiles::NavMeshTile,
+};
 
 #[derive(Component, Reflect)]
-#[require(Transform, TileAffectors, TileGeneration)]
+#[require(Transform, TileAffectors)] //TileGeneration
 pub struct Tile(pub UVec2);
 
 /// Generation ticker for tiles.
 /// Used only add newest nav_mesh on generation
-#[derive(Component, Reflect, Default, Deref, DerefMut)]
-pub struct TileGeneration(pub u64);
+// #[derive(Component, Reflect, Default, Deref, DerefMut)]
+// pub struct TileGeneration(pub u64);
 
 #[derive(Default, Component, Deref, DerefMut, Reflect)]
 #[reflect(Component)]
@@ -46,10 +50,8 @@ pub(crate) async fn build_tile(
                         let triangles = Triangles::default();
                         rasterize_collider_inner(collider, triangles)
                     }
-                    GeometryToConvert::ParryTriMesh(vertices, triangles) => {
-                        let vertices = vertices.into_iter().map(Vec3::from).collect();
-                        Triangles::TriMesh(vertices, triangles)
-                    }
+                    GeometryToConvert::ParryTriMesh(vertices, triangles) =>                        
+                        Triangles::TriMesh(vertices.into_iter().map(Vec3::from).collect(), triangles)
                 },
                 area: geometry_collection.area,
             })
@@ -62,8 +64,7 @@ pub(crate) async fn build_tile(
         build_heightfield_tile(
             &archipelago,
             &triangle_collection,
-            &heightfield_collections,            
-            //&arch_transform,
+            &heightfield_collections,
         )
     };
 

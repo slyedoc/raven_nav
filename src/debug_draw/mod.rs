@@ -7,12 +7,7 @@ use bevy::{
     render::view::RenderLayers,
 };
 
-use crate::{
-    Bounding,
-    archipelago::*,
-    nav_mesh::*,
-    tile::*,
-};
+use crate::{Bounding, archipelago::*, nav_mesh::*, tile::*};
 
 #[derive(Default)]
 pub struct RavenDebugPlugin {
@@ -118,7 +113,7 @@ fn draw_tiles(
     let config = store.config::<RavenGizmos>().1;
 
     for (navmesh_handle, trans) in tile_query.iter() {
-        let navmesh = nav_meshs.get(&navmesh_handle.0).unwrap();        
+        let navmesh = nav_meshs.get(&navmesh_handle.0).unwrap();
         for (polygon_index, polygon) in navmesh.polygons.iter().enumerate() {
             // draw polygon triangles
             if let Some(color) = config.tile_polygons {

@@ -2,10 +2,7 @@ mod common; // helper functions
 use common::*;
 
 use avian3d::prelude::*;
-use bevy::{
-    input::common_conditions::input_just_pressed,
-    prelude::*, window::WindowResolution,
-};
+use bevy::{input::common_conditions::input_just_pressed, prelude::*, window::WindowResolution};
 use raven::prelude::*;
 
 fn main() {
@@ -14,7 +11,7 @@ fn main() {
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Raven: Simple".to_string(),
-                    resolution: WindowResolution::new(1920.0, 1080.0),                    
+                    resolution: WindowResolution::new(1920.0, 1080.0),
                     ..default()
                 }),
                 ..default()
@@ -62,11 +59,11 @@ fn setup(
     commands.spawn((
         Name::new("Archipelago"),
         Archipelago::new(0.5, 1.9, Vec3::splat(50.0)),
-        ArchipelagoMovement // helper to move the archipelago around with Arrow Keys to see regeneration
+        ArchipelagoMovement, // helper to move the archipelago around with Arrow Keys to see regeneration
     ));
 
     // heightfield
-    let resolution = 70;
+    let resolution = 150;
     let oct = 10.0;
     let height_scale = 8.0;
     let scale = Vec3::new(resolution as f32, height_scale, resolution as f32);
@@ -113,7 +110,6 @@ fn setup(
         },
     ));
 }
-
 
 fn toggle_nav_mesh_debug_draw(mut store: ResMut<GizmoConfigStore>) {
     let config = store.config_mut::<RavenGizmos>().0;

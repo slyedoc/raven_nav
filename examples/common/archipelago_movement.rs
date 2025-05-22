@@ -14,8 +14,6 @@ impl Plugin for ArchipelagoMovementPlugin {
     }
 }
 
-
-
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Default, Reflect)]
 #[require(
     //Name = Name::new("CameraFree"),    
@@ -41,7 +39,7 @@ fn default_binding(
             Cardinal::arrow_keys().with_conditions_each(BlockBy::<EnableSprint>::default()),
             Cardinal::arrow_keys()
                 .with_conditions_each(Chord::<EnableSprint>::default())
-                .with_modifiers_each(Scale::splat(10.0)),            
+                .with_modifiers_each(Scale::splat(10.0)),
         ))
         // Don't trigger the action when the chord is active.
         .with_modifiers((
@@ -49,22 +47,21 @@ fn default_binding(
             SmoothNudge::default(), // Make movement smooth and independent of the framerate. To only make it framerate-independent, use `DeltaScale`.
             Scale::splat(DEFAULT_SPEED), // Additionally multiply by a constant to achieve the desired speed.
         ));
-    
 }
 
-fn apply_movement(trigger: Trigger<Fired<Move>>, mut query: Query<&mut Transform, With<ArchipelagoMovement>>) {
+fn apply_movement(
+    trigger: Trigger<Fired<Move>>,
+    mut query: Query<&mut Transform, With<ArchipelagoMovement>>,
+) {
     let mut trans = query.get_mut(trigger.target()).unwrap();
     let change = vec3(trigger.value.x, 0.0, -trigger.value.y);
     let rot = trans.rotation;
     trans.translation += rot * change;
 }
 
-
-
 #[derive(Debug, InputAction)]
 #[input_action(output = Vec2)]
 struct Move;
-
 
 #[derive(Debug, InputAction)]
 #[input_action(output = bool)]

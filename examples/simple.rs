@@ -5,7 +5,6 @@ use avian3d::prelude::*;
 use bevy::{input::common_conditions::input_just_pressed, prelude::*, window::WindowResolution};
 use raven::prelude::*;
 
-
 fn main() {
     App::new()
         .add_plugins((
@@ -36,7 +35,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     commands.spawn((
-        CameraFree, // Helper to move the camera around with WASD and mouse look with right mouse button        
+        CameraFree, // Helper to move the camera around with WASD and mouse look with right mouse button
         Camera3d::default(),
         Camera {
             hdr: true,
@@ -57,9 +56,8 @@ fn setup(
     commands.spawn((
         Name::new("Archipelago"),
         // This creates the archipelago which will generate a nav-mesh
-        Archipelago::new(0.5, 1.9, Vec3::splat(50.0))
-            .with_traversible_slope(40.0_f32.to_radians()),   
-        ArchipelagoMovement // helper to move the archipelago around with Arrow Keys to see regeneration
+        Archipelago::new(0.5, 1.9, Vec3::splat(50.0)).with_traversible_slope(40.0_f32.to_radians()),
+        ArchipelagoMovement, // helper to move the archipelago around with Arrow Keys to see regeneration
     ));
 
     commands.spawn((

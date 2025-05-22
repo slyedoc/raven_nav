@@ -3,7 +3,7 @@ use crate::{
     heightfields::{OpenSpan, OpenTile},
 };
 
-use super::{get_neighbour_index};
+use super::get_neighbour_index;
 use crate::archipelago::Archipelago;
 
 #[derive(Default, Clone, Copy)]
