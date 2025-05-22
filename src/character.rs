@@ -1,4 +1,4 @@
-use bevy::{ecs::world::DeferredWorld, prelude::*};
+use bevy::prelude::*;
 
 use crate::{agent::Velocity, archipelago::ArchipelagoCharacters};
 

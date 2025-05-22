@@ -1,20 +1,16 @@
 use bevy::{
-    color::{
-        self,
-        palettes::{css, tailwind},
-    },
+    color::palettes::{css, tailwind},
     gizmos::{AppGizmoBuilder, config::GizmoConfigGroup},
     math::bounding::BoundingVolume,
     prelude::*,
     reflect::Reflect,
-    render::{primitives::Aabb, view::RenderLayers},
-    time::{Time, Timer},
+    render::view::RenderLayers,
 };
 
 use crate::{
     Bounding,
-    archipelago::{self, *},
-    nav_mesh::{self, *},
+    archipelago::*,
+    nav_mesh::*,
     tile::*,
 };
 
@@ -68,33 +64,33 @@ impl Default for RavenGizmos {
 }
 
 // Helper function to draw a path for the timer's duration.
-fn draw_path(
-    mut commands: Commands,
-    mut path_query: Query<(Entity, &mut DrawPath)>,
-    time: Res<Time>,
-    mut gizmos: Gizmos<RavenGizmos>,
-) {
-    path_query.iter_mut().for_each(|(entity, mut draw_path)| {
-        if draw_path
-            .timer
-            .as_mut()
-            .is_some_and(|timer| timer.tick(time.delta()).just_finished())
-        {
-            commands.entity(entity).despawn();
-        } else {
-            gizmos.linestrip(draw_path.pulled_path.clone(), draw_path.color);
-        }
-    });
-}
+// fn draw_path(
+//     mut commands: Commands,
+//     mut path_query: Query<(Entity, &mut DrawPath)>,
+//     time: Res<Time>,
+//     mut gizmos: Gizmos<RavenGizmos>,
+// ) {
+//     path_query.iter_mut().for_each(|(entity, mut draw_path)| {
+//         if draw_path
+//             .timer
+//             .as_mut()
+//             .is_some_and(|timer| timer.tick(time.delta()).just_finished())
+//         {
+//             commands.entity(entity).despawn();
+//         } else {
+//             gizmos.linestrip(draw_path.pulled_path.clone(), draw_path.color);
+//         }
+//     });
+// }
 
 fn draw_arhipelago_bounds(
-    archipelago_query: Query<(&GlobalTransform, &Archipelago, &Bounding)>,
+    archipelago_query: Query<(&GlobalTransform, &Bounding), With<Archipelago>>,
     mut gizmos: Gizmos<RavenGizmos>,
     store: Res<GizmoConfigStore>,
 ) {
     let config = store.config::<RavenGizmos>().1;
     if let Some(color) = config.archipelago_bounds {
-        for (&trans, arch, bounding) in archipelago_query.iter() {
+        for (&trans, bounding) in archipelago_query.iter() {
             gizmos.cuboid(bounding_transform(&bounding, &trans), color);
         }
     }
@@ -147,7 +143,7 @@ fn draw_tiles(
             // draw island edges
             if let Some(color) = config.tile_edges {
                 for (edge_index, connection) in polygon.connectivity.iter().enumerate() {
-                    let line_type = match connection.as_ref() {
+                    let _line_type = match connection.as_ref() {
                         None => LineType::BoundaryEdge,
                         Some(connection) => {
                             // Ignore connections where the connected polygon has a greater
@@ -212,29 +208,29 @@ fn bounding_transform(bounding: &Bounding, transform: &GlobalTransform) -> Globa
         )
 }
 
-#[derive(Component)]
-/// Path drawing helper component. Each instance of this component will draw a path for until ``timer`` passed before being despawned.
-pub struct DrawPath {
-    /// Timer for how long to display path before it is despawned.
-    ///
-    /// If ``None`` the DrawPath entity will not be automatically despawned
-    pub timer: Option<Timer>,
-    /// Path to display.
-    pub pulled_path: Vec<Vec3>,
-    /// Color to display path as.
-    pub color: Color,
-}
+// #[derive(Component)]
+// /// Path drawing helper component. Each instance of this component will draw a path for until ``timer`` passed before being despawned.
+// pub struct DrawPath {
+//     /// Timer for how long to display path before it is despawned.
+//     ///
+//     /// If ``None`` the DrawPath entity will not be automatically despawned
+//     pub timer: Option<Timer>,
+//     /// Path to display.
+//     pub pulled_path: Vec<Vec3>,
+//     /// Color to display path as.
+//     pub color: Color,
+// }
 
-/// The type of debug points.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
-pub enum PointType {
-    /// The position of an agent.
-    AgentPosition(Entity),
-    /// The target of an agent.
-    TargetPosition(Entity),
-    /// The waypoint of an agent.
-    Waypoint(Entity),
-}
+// /// The type of debug points.
+// #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+// pub enum PointType {
+//     /// The position of an agent.
+//     AgentPosition(Entity),
+//     /// The target of an agent.
+//     TargetPosition(Entity),
+//     /// The waypoint of an agent.
+//     Waypoint(Entity),
+// }
 
 /// The type of debug lines.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]

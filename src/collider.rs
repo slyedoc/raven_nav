@@ -1,14 +1,10 @@
-use avian3d::{
+use avian3d::
     parry::{
         math::Isometry,
-        na::Vector3,
         shape::{HeightField, TypedShape},
-    },
-    prelude::*,
-};
+    }
+;
 use bevy::prelude::*;
-use smallvec::SmallVec;
-
 use crate::conversion::{ColliderType, GeometryToConvert};
 
 /// Add this to any compoent with a Collider to indicate that it is a nav-mesh affector.

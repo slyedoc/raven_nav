@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, ops::Div, sync::Arc};
 
 use avian3d::parry::shape::HeightField;
-use bevy::{asset::transformer, math::Vec3A, prelude::*};
+use bevy::{math::Vec3A, prelude::*};
 use smallvec::SmallVec;
 
 use crate::{Area, archipelago::Archipelago, conversion::Triangles};
@@ -60,7 +60,7 @@ pub(super) struct TriangleCollection {
 
 pub struct HeightFieldCollection {
     pub transform: GlobalTransform,
-    pub heightfield: Arc<HeightField>,
+    pub heightfield: Arc<HeightField>, //
     pub area: Option<Area>,
 }
 

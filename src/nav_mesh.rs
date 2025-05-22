@@ -1,15 +1,12 @@
-use std::{cmp::Ordering, sync::{Arc, RwLock}};
+use std::cmp::Ordering;
 
 use bevy::{
     platform::collections::{HashMap, HashSet},
     prelude::*,
+    render::primitives::Aabb,
 };
 use disjoint::DisjointSet;
 use thiserror::Error;
-
-use crate::{archipelago::PointSampleDistance, bounding_box::BoundingBox, tiles::NavMeshTiles};
-
-
 
 /// A navigation mesh.
 pub struct PreNavigationMesh {
@@ -63,10 +60,7 @@ impl PreNavigationMesh {
             ));
         }
 
-        // TODO: update to use bevy coordinates
-        let mesh_bounds = self.vertices.iter().fold(BoundingBox::Empty, |acc, &vertex| {
-            acc.expand_to_point(vertex)
-        });
+        let mesh_bounds = Aabb::enclosing(self.vertices.iter()).expect("should have been at least 1 vertex");
         let mut region_sets = DisjointSet::with_len(self.polygons.len());
 
         enum ConnectivityState {
@@ -169,28 +163,32 @@ impl PreNavigationMesh {
             .polygons
             .drain(..)
             .enumerate()
-            .map(|(polygon_index, polygon_vertices)| ValidPolygon {
-                bounds: polygon_vertices
-                    .iter()
-                    .fold(BoundingBox::Empty, |bounds, vertex| {
-                        bounds.expand_to_point(self.vertices[*vertex])
-                    }),
-                center: polygon_vertices.iter().map(|i| self.vertices[*i]).sum::<Vec3>()
-                    / polygon_vertices.len() as f32,
-                connectivity: vec![None; polygon_vertices.len()],
-                vertices: polygon_vertices,
-                region: {
-                    let region = region_sets.root_of(polygon_index);
-                    // Get around the borrow checker by deciding on the new normalized
-                    // region beforehand.
-                    let new_normalized_region = region_to_normalized_region.len();
-                    // Either lookup the existing normalized region or insert the next
-                    // unique index.
-                    *region_to_normalized_region
-                        .entry(region)
-                        .or_insert_with(|| new_normalized_region)
-                },
-                type_index: self.polygon_type_indices[polygon_index],
+            .map(|(polygon_index, polygon_vertices)| {
+                ValidPolygon {
+                    bounds: Aabb::enclosing(
+                        polygon_vertices.iter().map(|&vertex| self.vertices[vertex]),
+                    )
+                    .expect("should have been at least 1 vertex"),
+                    center: polygon_vertices
+                        .iter()
+                        .map(|i| self.vertices[*i])
+                        .sum::<Vec3>()
+                        / polygon_vertices.len() as f32,
+                    connectivity: vec![None; polygon_vertices.len()],
+                    vertices: polygon_vertices,
+                    region: {
+                        let region = region_sets.root_of(polygon_index);
+                        // Get around the borrow checker by deciding on the new normalized
+                        // region beforehand.
+                        let new_normalized_region = region_to_normalized_region.len();
+                        // Either lookup the existing normalized region or insert the next
+                        // unique index.
+                        *region_to_normalized_region
+                            .entry(region)
+                            .or_insert_with(|| new_normalized_region)
+                    },
+                    type_index: self.polygon_type_indices[polygon_index],
+                }
             })
             .inspect(|polygon| {
                 used_type_indices.insert(polygon.type_index);
@@ -248,11 +246,11 @@ pub struct NodeType;
 
 /// An asset holding a `landmass` nav mesh.
 #[derive(Asset, TypePath, Debug)]
+#[allow(dead_code)]
 pub struct NavigationMesh {
-
     /// The bounds of the mesh data itself. This is a tight bounding box around
     /// the vertices of the navigation mesh.
-    pub(crate) mesh_bounds: BoundingBox,
+    pub(crate) mesh_bounds: Aabb,
     /// The vertices that make up the polygons.
     pub(crate) vertices: Vec<Vec3>,
     /// The polygons of the mesh.
@@ -280,7 +278,7 @@ pub struct NavigationMesh {
 // A navigation mesh which has been validated and derived data has been
 /// computed.
 // pub struct ValidNavigationMesh {
-    
+
 // }
 
 // impl ValidNavigationMesh {
@@ -444,6 +442,7 @@ pub(crate) struct Connectivity {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub(crate) struct ValidPolygon {
     /// The vertices are indexes to the `vertices` Vec of the corresponding
     /// ValidNavigationMesh.
@@ -462,17 +461,21 @@ pub(crate) struct ValidPolygon {
     /// once it is part of an island.
     pub(crate) type_index: usize,
     /// The bounding box of `vertices`.
-    pub(crate) bounds: BoundingBox,
+    pub(crate) bounds: Aabb,
     /// The center of the polygon.
     pub(crate) center: Vec3,
 }
 
 impl ValidPolygon {
-  /// Determines the vertices corresponding to `edge`.
-  pub(crate) fn get_edge_indices(&self, edge: usize) -> (usize, usize) {
-    (
-      self.vertices[edge],
-      self.vertices[if edge == self.vertices.len() - 1 { 0 } else { edge + 1 }],
-    )
-  }
+    /// Determines the vertices corresponding to `edge`.
+    pub(crate) fn get_edge_indices(&self, edge: usize) -> (usize, usize) {
+        (
+            self.vertices[edge],
+            self.vertices[if edge == self.vertices.len() - 1 {
+                0
+            } else {
+                edge + 1
+            }],
+        )
+    }
 }

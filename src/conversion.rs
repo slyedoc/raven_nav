@@ -5,7 +5,7 @@ use avian3d::parry::{
 };
 use bevy::prelude::*;
 
-use crate::{collider::Area, heightfields::TriangleCollection};
+use crate::collider::Area;
 
 pub struct GeometryCollection {
     pub transform: GlobalTransform,

@@ -1,17 +1,6 @@
-use crate::agent::*;
-use crate::character::*;
-use crate::tile;
-use crate::tile::*;
-use crate::tiles::NavMeshTile;
-use crate::tiles::NavMeshTiles;
-
-use bevy::platform::collections::HashMap;
-use bevy::platform::collections::HashSet;
-use bevy::prelude::*;
-use bevy::tasks::Task;
+use crate::{agent::*,character::*,tile::*, tiles::NavMeshTile};
+use bevy::{prelude::*, tasks::Task, platform::collections::{HashMap, HashSet}};
 use std::num::{NonZeroU8, NonZeroU16};
-use std::sync::Arc;
-use std::sync::RwLock;
 use bevy_inspector_egui::{prelude::*, inspector_options::std_options::NumberDisplay};
 
 
@@ -79,6 +68,7 @@ pub struct Archipelago {
     ///
     /// **Suggested value**: ``ceil(character_radius / cell_width)`` (2-3 if `cell_width` is 1/2 of ``character_radius``)  
     pub walkable_radius: u16,
+
     /// Maximum height difference that is still considered traversable in cell_height(s). This smooths out stair steps and small ledges.
     pub step_height: u16,
 
@@ -340,7 +330,7 @@ fn test_tile_tile_containing_position() {
     let tile_size = arch.get_tile_size();    
     assert_eq!(tile_size, 30.0); // agent radius * half * tile width
 
-    let global_trans = GlobalTransform::IDENTITY;
+    // let global_trans = GlobalTransform::IDENTITY;
 
     // let a = arch.get_tile_containing_position(Vec2::new(-50.0, -50.0), &global_trans);    
     // assert_eq!(a, UVec2::new(0, 0));

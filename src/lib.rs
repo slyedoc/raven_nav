@@ -1,11 +1,5 @@
-#![allow(warnings)]
 
-use core::arch;
-use std::{
-    num::NonZeroU16,
-    process::Child,
-    sync::{Arc, RwLock},
-};
+use std::sync::Arc;
 
 use agent::{Agent, AgentArchipelago, AgentSettings};
 use archipelago::Archipelago;
@@ -13,13 +7,10 @@ use bounding_box::Bounding;
 use character::{Character, CharacterArchipelago};
 use collider::{GeometryResult, get_geometry_type};
 use contour::build_contours;
-use conversion::{GeometryCollection, GeometryToConvert, Triangles, rasterize_collider_inner};
-use heightfields::{
-    HeightFieldCollection, TriangleCollection, build_heightfield_tile, build_open_heightfield_tile,
-    calculate_distance_field, erode_walkable_area,
-};
-use mesher::build_poly_mesh;
-use regions::build_regions;
+use conversion::GeometryCollection;
+use heightfields::
+    HeightFieldCollection
+;
 
 mod agent;
 mod collider;
@@ -34,7 +25,6 @@ mod math;
 mod mesher;
 mod regions;
 mod tiles;
-use agent::*;
 mod archipelago;
 use archipelago::*;
 mod character;
@@ -49,24 +39,18 @@ use avian3d::{
     parry::{
         math::Isometry,
         na::Vector3,
-        shape::{HeightField, TypedShape},
-        transformation::voxelization::Voxel,
+        shape::HeightField,
     },
     prelude::*,
 };
 use bevy::{
-    core_pipeline::core_2d::graph::input,
-    ecs::{entity::EntityHashMap, error::info},
-    input::common_conditions::input_just_pressed,
+    ecs::entity::EntityHashMap,
     math::bounding::Aabb3d,
-    platform::collections::{HashMap, HashSet},
+    platform::collections::HashSet,
     prelude::*,
-    render::primitives::Aabb,
     tasks::{futures_lite::future, AsyncComputeTaskPool},
-    ui::update,
 };
-use smallvec::SmallVec;
-use tiles::{NavMeshTile, NavMeshTiles, create_nav_mesh_tile_from_poly_mesh};
+use tiles::{NavMeshTile, create_nav_mesh_tile_from_poly_mesh};
 
 pub mod prelude {
     #[cfg(feature = "debug_draw")]
@@ -112,24 +96,28 @@ impl Plugin for RavenPlugin {
     }
 }
 
+// TODO: use arch bounding to find first available archipelago
 /// Add archipelago refs to agents if not present
 /// Only works when one archipelago exists, if not you need to set CharacterArchipelago yourself when spawning the character.
+#[allow(dead_code)]
 fn add_agents_to_archipelago(
     mut commands: Commands,
-    mut query: Query<(Entity), (Without<CharacterArchipelago>, Added<Agent>)>,
-    mut archipelago: Single<Entity, With<Archipelago>>,
+    mut query: Query<Entity, (Without<CharacterArchipelago>, Added<Agent>)>,
+    archipelago: Single<Entity, With<Archipelago>>,
 ) {
     for e in query.iter_mut() {
         commands.entity(e).insert(AgentArchipelago(*archipelago));
     }
 }
 
+// TODO: use arch bounding to find first available archipelago
 /// Add archipelago refs to characters if not present
 /// Only works when one archipelago exists, if not you need to set CharacterArchipelago yourself when spawning the character.
+#[allow(dead_code)]
 fn add_characters_to_archipelago(
     mut commands: Commands,
-    mut query: Query<(Entity), (Without<CharacterArchipelago>, Added<Character>)>,
-    mut archipelago: Single<Entity, With<Archipelago>>,
+    mut query: Query<Entity, (Without<CharacterArchipelago>, Added<Character>)>,
+    archipelago: Single<Entity, With<Archipelago>>,
 ) {
     for e in query.iter_mut() {
         commands
@@ -168,7 +156,7 @@ fn archipelago_changed(
         // setup bounding box
         commands
             .entity(e)
-            .insert((Bounding(Aabb3d::new(Vec3A::ZERO, arch.world_half_extents))));
+            .insert(Bounding(Aabb3d::new(Vec3A::ZERO, arch.world_half_extents)));
 
         // create islands
         let title_size = arch.get_tile_size();
@@ -245,7 +233,7 @@ fn update_navmesh_affectors(
         (&Archipelago, &GlobalTransform, &TileLookup, &mut DirtyTiles),
         Without<Tile>,
     >,
-    mut tile_query: Query<(&mut TileAffectors), With<Tile>>,
+    mut tile_query: Query<&mut TileAffectors, With<Tile>>,
     mut collider_query: Query<
         (
             Entity,
@@ -329,12 +317,10 @@ fn start_tile_build_tasks(
     mut commands: Commands,
     mut tiles_to_generate: Local<Vec<UVec2>>,
     mut heightfields: Local<EntityHashMap<Arc<HeightField>>>,
-    mut archipelago_query: Query<(
-        Entity,
+    mut archipelago_query: Query<(        
         &Archipelago,
-        &GlobalTransform,
+        &TileLookup,
         &mut DirtyTiles,
-        &mut TileLookup,
         &mut ActiveGenerationTasks,
     )>,
     mut tile_query: Query<(&TileAffectors, &mut TileGeneration, &GlobalTransform), With<Tile>>,
@@ -343,11 +329,10 @@ fn start_tile_build_tasks(
     let thread_pool = AsyncComputeTaskPool::get();
 
     for (
-        arch_e,
         archipelago,
-        arch_transform,
+        tile_lookup,
         mut dirty_tiles,
-        mut tile_lookup,
+        
         mut active_generation_tasks,
     ) in archipelago_query.iter_mut()
     {
@@ -385,7 +370,7 @@ fn start_tile_build_tasks(
                 // Get the geometry type
                 let geometry_result = get_geometry_type(collider.shape_scaled().as_typed_shape());
 
-                // Convert the collider transform to the tile space
+                // Convert the collider's transform to the tile's local space
                 let transform = GlobalTransform::from(
                     collider_transform.affine() * tile_transform.affine().inverse(),
                 );
@@ -422,7 +407,7 @@ fn start_tile_build_tasks(
 fn update_tile_build_tasks(
     mut commands: Commands,
     mut archipelago_query: Query<&mut ActiveGenerationTasks, With<Archipelago>>,
-    mut tile_query: Query<&TileGeneration, With<Tile>>,
+    tile_query: Query<&TileGeneration, With<Tile>>,
     mut nav_meshes: ResMut<Assets<NavigationMesh>>,
 ) {
     for mut tasks in archipelago_query.iter_mut() {
@@ -531,10 +516,9 @@ fn handle_geometry_result(
             } else {
                 let height_field_arc = Arc::new(heightfield.clone());
                 entity_heightfield_map.insert(entity, height_field_arc.clone());
-
                 HeightFieldCollection {
                     transform: collider_transform,
-                    heightfield: height_field_arc.clone(),
+                    heightfield: height_field_arc,
                     area,
                 }
             };
