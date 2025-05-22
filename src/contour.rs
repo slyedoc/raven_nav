@@ -6,12 +6,11 @@ use bevy::{
 };
 
 use crate::{
-    Area, get_neighbour_index,
-    heightfields::{OpenSpan, OpenTile},
+    get_neighbour_index, heightfields::{OpenSpan, OpenTile}, archipelago::Archipelago, collider::Area
 };
 
 use super::math::{in_cone, intersect};
-use super::{FLAG_BORDER_VERTEX, MASK_CONTOUR_REGION, NavMeshSettings};
+use super::{FLAG_BORDER_VERTEX, MASK_CONTOUR_REGION};
 
 #[derive(Default, Clone, Debug)]
 pub struct Contour {
@@ -42,13 +41,13 @@ struct ContourRegion {
 
 pub(crate) fn build_contours(
     open_tile: &OpenTile,
-    nav_mesh_settings: &NavMeshSettings,
+    vox_settings: &Archipelago,
 ) -> ContourSet {
     let max_contours = open_tile.max_regions.max(8);
     let mut contour_set = ContourSet {
         contours: Vec::with_capacity(max_contours.into()),
     };
-    let tile_side = nav_mesh_settings.get_tile_side_with_border();
+    let tile_side = vox_settings.get_tile_side_with_border();
 
     // Mark boundaries.
     let mut boundry_flags = vec![0u8; open_tile.span_count];
@@ -98,7 +97,7 @@ pub(crate) fn build_contours(
                 cell_index,
                 span_index,
                 open_tile,
-                nav_mesh_settings,
+                vox_settings,
                 &mut boundry_flags,
                 &mut vertices,
             );
@@ -107,8 +106,8 @@ pub(crate) fn build_contours(
             simplify_contour(
                 &vertices,
                 &mut simplified_vertices,
-                nav_mesh_settings.max_contour_simplification_error,
-                nav_mesh_settings.max_edge_length,
+                vox_settings.max_contour_simplification_error,
+                vox_settings.max_edge_length,
             );
 
             // Remove degenerate segments.
@@ -390,7 +389,7 @@ fn walk_contour(
     mut cell_index: usize,
     mut span_index: usize,
     tile: &OpenTile,
-    nav_mesh_settings: &NavMeshSettings,
+    vox_settings: &Archipelago,
     boundry_flags: &mut [u8],
     contour: &mut Vec<u32>,
 ) {
@@ -401,16 +400,16 @@ fn walk_contour(
     let start_direction = dir;
     let start_cell = cell_index;
     let start_span = span_index;
-    let tile_side = nav_mesh_settings.get_tile_side_with_border();
+    let tile_side = vox_settings.get_tile_side_with_border();
 
     loop {
-        let row = cell_index / nav_mesh_settings.get_tile_side_with_border();
-        let column = cell_index % nav_mesh_settings.get_tile_side_with_border();
+        let row = cell_index / vox_settings.get_tile_side_with_border();
+        let column = cell_index % vox_settings.get_tile_side_with_border();
 
         let span = &tile.cells[cell_index].spans[span_index];
         if boundry_flags[span.tile_index] & (1 << dir) > 0 {
             // Check if this direction is unconnected.
-            let height = get_corner_height(cell_index, span, tile, nav_mesh_settings, dir);
+            let height = get_corner_height(cell_index, span, tile, vox_settings, dir);
 
             let mut bordering_region = 0u32;
             if let Some(span_index) = span.neighbours[dir as usize] {
@@ -457,10 +456,10 @@ fn get_corner_height(
     cell_index: usize,
     span: &OpenSpan,
     tile: &OpenTile,
-    nav_mesh_settings: &NavMeshSettings,
+    vox_settings: &Archipelago,
     dir: u8,
 ) -> u16 {
-    let tile_side = nav_mesh_settings.get_tile_side_with_border();
+    let tile_side = vox_settings.get_tile_side_with_border();
     let next_dir = (dir + 1) & 0x3;
     let mut regions = [0; 4];
 

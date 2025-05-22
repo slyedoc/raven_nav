@@ -1,5 +1,8 @@
-use bevy::prelude::*;
+use bevy::{math::bounding::Aabb3d, prelude::*};
 
+
+#[derive(Component, Clone, Debug, Deref, DerefMut)]
+pub(crate) struct Bounding(pub Aabb3d);
 // TODO: can most likely replace with boudning box with aabb, Trans i dont get yet, was called Transform
 
 /// A transform that can be applied to Vec3's.

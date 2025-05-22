@@ -2,9 +2,9 @@ mod common; // helper functions
 use common::*;
 
 use avian3d::prelude::*;
-use bevy::{input::common_conditions::input_toggle_active, prelude::*};
+use bevy::{input::common_conditions::input_just_pressed, prelude::*, window::WindowResolution};
 use raven::prelude::*;
-use sly_editor::IsEditorCamera;
+
 
 fn main() {
     App::new()
@@ -12,21 +12,20 @@ fn main() {
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Raven: Simple".to_string(),
+                    resolution: WindowResolution::new(1920.0, 1080.0),
                     ..default()
                 }),
                 ..default()
             }),
             ExampleCommonPlugin,
             PhysicsPlugins::default(),
-            RavenPlugin {
-                settings: NavMeshSettings::from_agent_and_bounds(0.5, 1.9, 250.0, -1.0),
-            },
-            RavenDebugPlugin,
+            RavenPlugin,
+            RavenDebugPlugin::default(),
         ))
         .add_systems(Startup, setup)
         .add_systems(
             Update,
-            toggle_nav_mesh_debug_draw.run_if(input_toggle_active(true, KeyCode::KeyM)),
+            toggle_nav_mesh_debug_draw.run_if(input_just_pressed(KeyCode::KeyM)),
         )
         .run();
 }
@@ -37,8 +36,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     commands.spawn((
-        CameraFree,
-        IsEditorCamera,
+        CameraFree, // Helper to move the camera around with WASD and mouse look with right mouse button        
         Camera3d::default(),
         Camera {
             hdr: true,
@@ -58,7 +56,10 @@ fn setup(
     // spawn default archipelago for now
     commands.spawn((
         Name::new("Archipelago"),
-        Archipelago::from_agent_radius(0.5),
+        // This creates the archipelago which will generate a nav-mesh
+        Archipelago::new(0.5, 1.9, Vec3::splat(50.0))
+            .with_traversible_slope(40.0_f32.to_radians()),   
+        ArchipelagoMovement // helper to move the archipelago around with Arrow Keys to see regeneration
     ));
 
     commands.spawn((
@@ -68,7 +69,7 @@ fn setup(
         Transform::default(),
         ColliderConstructor::TrimeshFromMesh,
         RigidBody::Static,
-        NavMeshAffector, // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
+        NavMeshAffector::default(), // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
     ));
 
     commands.spawn((
@@ -78,7 +79,7 @@ fn setup(
         Transform::from_xyz(0.0, 3.0, 0.0),
         Collider::cuboid(1.0, 1.0, 1.0),
         RigidBody::Dynamic,
-        NavMeshAffector, // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
+        NavMeshAffector::default(), // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
     ));
 
     commands.spawn((
@@ -106,6 +107,8 @@ fn setup(
     ));
 }
 
-fn toggle_nav_mesh_debug_draw(mut show_navmesh: ResMut<DrawNavMesh>) {
-    show_navmesh.0 = !show_navmesh.0;
+fn toggle_nav_mesh_debug_draw(mut store: ResMut<GizmoConfigStore>) {
+    let config = store.config_mut::<RavenGizmos>().0;
+    config.enabled = !config.enabled;
+    println!("NavMesh debug draw: {}", config.enabled);
 }

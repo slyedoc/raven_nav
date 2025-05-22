@@ -4,9 +4,7 @@ use bevy::{
     prelude::{UVec2, UVec4},
 };
 
-use crate::{Area, contour::ContourSet, detail_mesh::build_detail_mesh, heightfields::OpenTile};
-
-use super::NavMeshSettings;
+use crate::{Area, contour::ContourSet, detail_mesh::build_detail_mesh, heightfields::OpenTile, archipelago::Archipelago};
 use super::math::{intersect, intersect_prop, left, left_on};
 
 #[derive(Default, Debug)]
@@ -23,7 +21,7 @@ pub const VERTICES_IN_TRIANGLE: usize = 3; // Don't change this. The mesher can'
 
 pub fn build_poly_mesh(
     contour_set: ContourSet,
-    nav_mesh_settings: &NavMeshSettings,
+    vox_settings: &Archipelago,
     open_tile: &OpenTile,
 ) -> PolyMesh {
     let mut max_vertices = 0;
@@ -97,7 +95,7 @@ pub fn build_poly_mesh(
         }
     }
 
-    if let Some(detail_poly_mesh) = build_detail_mesh(nav_mesh_settings, open_tile, &poly_mesh) {
+    if let Some(detail_poly_mesh) = build_detail_mesh(vox_settings, open_tile, &poly_mesh) {
         poly_mesh = detail_poly_mesh;
     }
 
@@ -109,8 +107,8 @@ pub fn build_poly_mesh(
     );
 
     // Fix portal edges.
-    let border_side = nav_mesh_settings.get_border_side() as u16;
-    let far_edge = nav_mesh_settings.tile_width.get() + border_side;
+    let border_side = vox_settings.get_border_side() as u16;
+    let far_edge = vox_settings.tile_width.get() + border_side;
 
     for (polygon_index, edges) in poly_mesh.edges.iter_mut().enumerate() {
         let indices = &poly_mesh.polygons[polygon_index];

@@ -4,9 +4,10 @@ use common::*;
 use avian3d::prelude::*;
 use bevy::{
     input::common_conditions::input_just_pressed,
-    prelude::*, window::WindowResolution,
+    prelude::*,
 };
 use raven::prelude::*;
+use sly_editor::IsEditorCamera;
 
 fn main() {
     App::new()
@@ -14,7 +15,6 @@ fn main() {
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Raven: Simple".to_string(),
-                    resolution: WindowResolution::new(1920.0, 1080.0),                    
                     ..default()
                 }),
                 ..default()
@@ -40,6 +40,7 @@ fn setup(
 ) {
     commands.spawn((
         Name::new("Camera"),
+        IsEditorCamera,
         CameraFree,
         Camera3d::default(),
         Camera {
@@ -58,45 +59,11 @@ fn setup(
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -1.0, -0.5, 0.0)),
     ));
 
-    // spawn default archipelago for now
-    commands.spawn((
-        Name::new("Archipelago"),
-        Archipelago::new(0.5, 1.9, Vec3::splat(50.0)),
-        ArchipelagoMovement // helper to move the archipelago around with Arrow Keys to see regeneration
-    ));
+    // first archipelago
+    generate_area( &mut commands, &mut meshes, &mut materials, 1, Vec3::new(-40.0, 0.0, 0.0), 50.0);
 
-    // heightfield
-    let resolution = 70;
-    let oct = 10.0;
-    let height_scale = 8.0;
-    let scale = Vec3::new(resolution as f32, height_scale, resolution as f32);
-
-    let mut heightfield = vec![vec![0.0; resolution]; resolution];
-    for x in 0..resolution {
-        for y in 0..resolution {
-            heightfield[x][y] = (x as f32 / oct).sin() + (y as f32 / oct).cos();
-        }
-    }
-
-    commands.spawn((
-        Name::new("Heightfield"),
-        Transform::IDENTITY,
-        Mesh3d(meshes.add(generate_mesh_from_heightfield(&heightfield, scale, true))),
-        MeshMaterial3d(materials.add(Color::srgb(0.7, 0.7, 0.8))),
-        Collider::heightfield(heightfield, scale),
-        RigidBody::Static,
-        NavMeshAffector::default(), // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
-    ));
-
-    // commands.spawn((
-    //     Name::new("Cube"),
-    //     Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-    //     MeshMaterial3d(materials.add(Color::srgb(0.5, 0.3, 0.3))),
-    //     Transform::from_xyz(0.0, 10.0, 0.0),
-    //     Collider::cuboid(1.0, 1.0, 1.0),
-    //     RigidBody::Dynamic,
-    //     NavMeshAffector, // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
-    // ));
+    // second archipelago
+    generate_area( &mut commands, &mut meshes, &mut materials, 2, Vec3::new(40.0, 0.0, 0.0), 50.0);    
 
     commands.spawn((
         Name::new("Text"),
@@ -114,6 +81,43 @@ fn setup(
     ));
 }
 
+fn generate_area(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    index: usize,
+    translation: Vec3,
+    size: f32
+) {
+    commands.spawn((
+        Name::new(format!("Archipelago {}", index)),
+        Archipelago::new(0.5, 1.9, Vec3::splat(size)),
+        Transform::from_translation(translation)            
+    ));
+
+    // heightfield
+    let resolution = 30;
+    let oct = 10.0;
+    let height_scale = 8.0;
+    let scale = Vec3::new(size, height_scale, size);
+
+    let mut heightfield = vec![vec![0.0; resolution]; resolution];
+    for x in 0..resolution {
+        for y in 0..resolution {
+            heightfield[x][y] = (x as f32 / oct).sin() + (y as f32 / oct).cos();
+        }
+    }
+
+    commands.spawn((
+        Name::new(format!("Heightfield {}", index)),
+        Transform::from_translation(translation),
+        Mesh3d(meshes.add(generate_mesh_from_heightfield(&heightfield, scale, true))),
+        MeshMaterial3d(materials.add(Color::srgb(0.7, 0.7, 0.8))),
+        Collider::heightfield(heightfield, scale),
+        RigidBody::Static,
+        NavMeshAffector::default(), // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
+    ));
+}
 
 fn toggle_nav_mesh_debug_draw(mut store: ResMut<GizmoConfigStore>) {
     let config = store.config_mut::<RavenGizmos>().0;

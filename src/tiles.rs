@@ -1,12 +1,12 @@
 use bevy::{
     math::Vec3Swizzles,
     platform::collections::HashMap,
-    prelude::{UVec2, Vec2, Vec3},
+    prelude::{UVec2, Vec2, Vec3}, transform::components::GlobalTransform,
 };
 use smallvec::SmallVec;
 
 use crate::{
-    Area, NavMeshSettings,
+    Area, archipelago::Archipelago,
     mesher::{EdgeConnection, EdgeConnectionDirection, VERTICES_IN_TRIANGLE},
 };
 
@@ -85,12 +85,12 @@ impl NavMeshTiles {
         &mut self,
         tile_coord: UVec2,
         mut tile: NavMeshTile,
-        nav_mesh_settings: &NavMeshSettings,
+        archipelago: &Archipelago,
     ) {
         let previous_tile_existed = self.tiles.contains_key(&tile_coord);
 
         // Connect neighbours.
-        let step_height = nav_mesh_settings.step_height as f32 * nav_mesh_settings.cell_height;
+        let step_height = archipelago.step_height as f32 * archipelago.cell_height;
         // X-Negative
         if tile_coord.x > 0 {
             let neighbour_coord = UVec2::new(tile_coord.x - 1, tile_coord.y);
@@ -243,40 +243,40 @@ impl NavMeshTiles {
         self.tiles.remove(&tile_coord);
     }
 
-    /// Returns the closest polygon in a box around ``center`` as a tuple of (tile coordinate, polygon index, position on triangle).
-    pub fn find_closest_polygon_in_box(
-        &self,
-        nav_mesh_settings: &NavMeshSettings,
-        center: Vec3,
-        half_extents: f32,
-    ) -> Option<(UVec2, u16, Vec3)> {
-        let min = center - half_extents;
-        let max = center + half_extents;
+    // Returns the closest polygon in a box around ``center`` as a tuple of (tile coordinate, polygon index, position on triangle).
+    // pub fn find_closest_polygon_in_box(
+    //     &self,
+    //     archipelago: &Archipelago,
+    //     center: Vec3,
+    //     half_extents: f32,
+    // ) -> Option<(UVec2, u16, Vec3)> {
+    //     let min = center - half_extents;
+    //     let max = center + half_extents;
 
-        let min_tile = nav_mesh_settings.get_tile_containing_position(min.xz());
-        let max_tile = nav_mesh_settings.get_tile_containing_position(max.xz());
+    //     let min_tile = archipelago.get_tile_containing_position(min.xz());
+    //     let max_tile = archipelago.get_tile_containing_position(max.xz());
 
-        let mut out_polygon = None;
-        let mut out_distance = f32::INFINITY;
-        for x in min_tile.x..=max_tile.x {
-            for y in min_tile.y..=max_tile.y {
-                let tile_coords = UVec2::new(x, y);
-                if let Some(tile) = self.tiles.get(&tile_coords) {
-                    for (poly_i, polygon) in tile.polygons.iter().enumerate() {
-                        let closest_point = tile.get_closest_point_in_polygon(polygon, center);
-                        let closest_distance = closest_point.distance_squared(center);
+    //     let mut out_polygon = None;
+    //     let mut out_distance = f32::INFINITY;
+    //     for x in min_tile.x..=max_tile.x {
+    //         for y in min_tile.y..=max_tile.y {
+    //             let tile_coords = UVec2::new(x, y);
+    //             if let Some(tile) = self.tiles.get(&tile_coords) {
+    //                 for (poly_i, polygon) in tile.polygons.iter().enumerate() {
+    //                     let closest_point = tile.get_closest_point_in_polygon(polygon, center);
+    //                     let closest_distance = closest_point.distance_squared(center);
 
-                        if closest_distance < out_distance {
-                            out_distance = closest_distance;
-                            out_polygon = Some((tile_coords, poly_i as u16, closest_point));
-                        }
-                    }
-                }
-            }
-        }
+    //                     if closest_distance < out_distance {
+    //                         out_distance = closest_distance;
+    //                         out_polygon = Some((tile_coords, poly_i as u16, closest_point));
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
 
-        out_polygon
-    }
+    //     out_polygon
+    // }
 }
 
 fn get_height_in_triangle(vertices: &[Vec3; VERTICES_IN_TRIANGLE], position: Vec3) -> Option<f32> {
@@ -603,9 +603,8 @@ fn find_connecting_polygons_in_tile(
 }
 
 pub(super) fn create_nav_mesh_tile_from_poly_mesh(
-    poly_mesh: PolyMesh,
-    tile_coord: UVec2,
-    nav_mesh_settings: &NavMeshSettings,
+    poly_mesh: PolyMesh,    
+    archipelago: &Archipelago,    
 ) -> NavMeshTile {
     // Slight worry that the compiler won't optimize this but damn, it's cool.
     let polygons = poly_mesh
@@ -633,16 +632,15 @@ pub(super) fn create_nav_mesh_tile_from_poly_mesh(
         })
         .collect();
 
-    let tile_origin = nav_mesh_settings.get_tile_origin_with_border(tile_coord);
+    let tile_origin = archipelago.get_tile_minimum_bound_with_border();
     let vertices = poly_mesh
         .vertices
         .iter()
         .map(|vertex| {
             Vec3::new(
-                tile_origin.x + vertex.x as f32 * nav_mesh_settings.cell_width,
-                nav_mesh_settings.world_bottom_bound
-                    + vertex.y as f32 * nav_mesh_settings.cell_height,
-                tile_origin.y + vertex.z as f32 * nav_mesh_settings.cell_width,
+                tile_origin.x + vertex.x as f32 * archipelago.cell_width,
+                tile_origin.y + vertex.y as f32 * archipelago.cell_height,
+                tile_origin.z + vertex.z as f32 * archipelago.cell_width,
             )
         })
         .collect();

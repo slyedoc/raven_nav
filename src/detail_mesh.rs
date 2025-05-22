@@ -8,7 +8,8 @@ use bevy::{
 use bevy::log::info_span;
 
 use crate::{
-    NavMeshSettings, get_neighbour_index,
+    get_neighbour_index,
+    archipelago::Archipelago,
     heightfields::OpenTile,
     mesher::{PolyMesh, VERTICES_IN_TRIANGLE},
 };
@@ -28,11 +29,11 @@ struct HeightPatch {
 ///
 /// Adding vertices at points where the height difference compared to the OpenTile is too great.
 pub fn build_detail_mesh(
-    nav_mesh_settings: &NavMeshSettings,
+    vox_settings: &Archipelago,
     open_tile: &OpenTile,
     poly_mesh: &PolyMesh,
 ) -> Option<PolyMesh> {
-    let Some(detail_mesh_settings) = &nav_mesh_settings.experimental_detail_mesh_generation else {
+    let Some(detail_mesh_settings) = &vox_settings.experimental_detail_mesh_generation else {
         return None;
     };
 
@@ -45,7 +46,7 @@ pub fn build_detail_mesh(
         .polygons
         .iter()
         .map(|polygon| {
-            let mut min = U16Vec2::splat(nav_mesh_settings.tile_width.get());
+            let mut min = U16Vec2::splat(vox_settings.tile_width.get());
             let mut max = U16Vec2::ZERO;
 
             for i in polygon {
@@ -56,7 +57,7 @@ pub fn build_detail_mesh(
             }
 
             min = min.saturating_sub(U16Vec2::ONE);
-            max = (max + U16Vec2::ONE).min(U16Vec2::splat(nav_mesh_settings.tile_width.get()));
+            max = (max + U16Vec2::ONE).min(U16Vec2::splat(vox_settings.tile_width.get()));
 
             max_bounds = max_bounds.max(max.saturating_sub(min));
 
@@ -106,7 +107,7 @@ pub fn build_detail_mesh(
         height_patch.height = max.y.saturating_sub(min.y);
 
         extract_height_data(
-            nav_mesh_settings,
+            vox_settings,
             open_tile,
             &vertices,
             *region,
@@ -162,7 +163,7 @@ pub fn build_detail_mesh(
 }
 
 fn extract_height_data(
-    nav_mesh_settings: &NavMeshSettings,
+    vox_settings: &Archipelago,
     open_tile: &OpenTile,
     triangle_vertices: &[U16Vec3],
     region: u16,
@@ -173,16 +174,16 @@ fn extract_height_data(
 
     height_patch.heights.fill(u16::MAX);
 
-    let tile_side = nav_mesh_settings.get_tile_side_with_border();
+    let tile_side = vox_settings.get_tile_side_with_border();
 
     let mut empty = true;
     for y in 0..height_patch.height {
         // Including walkable radius because it acts as a buffer zone around the tile
         // but this is not included in the poly mesh.
-        let cell_y = y + height_patch.min_y + nav_mesh_settings.walkable_radius;
+        let cell_y = y + height_patch.min_y + vox_settings.walkable_radius;
 
         for x in 0..height_patch.width {
-            let cell_x = x + height_patch.min_x + nav_mesh_settings.walkable_radius;
+            let cell_x = x + height_patch.min_x + vox_settings.walkable_radius;
             let cell_i = cell_x as usize + cell_y as usize * tile_side;
             let cell = &open_tile.cells[cell_i];
 
@@ -217,7 +218,7 @@ fn extract_height_data(
         seed_array_with_poly_center(
             open_tile,
             triangle_vertices,
-            nav_mesh_settings,
+            vox_settings,
             queue,
             height_patch,
         );
@@ -253,10 +254,10 @@ fn extract_height_data(
 
             let height_patch_x = x as isize
                 - height_patch.min_x as isize
-                - nav_mesh_settings.walkable_radius as isize;
+                - vox_settings.walkable_radius as isize;
             let height_patch_y = y as isize
                 - height_patch.min_y as isize
-                - nav_mesh_settings.walkable_radius as isize;
+                - vox_settings.walkable_radius as isize;
 
             if height_patch_x < 0
                 || height_patch_y < 0
@@ -287,7 +288,7 @@ fn extract_height_data(
 fn seed_array_with_poly_center(
     open_tile: &OpenTile,
     vertices: &[U16Vec3],
-    nav_mesh_settings: &NavMeshSettings,
+    vox_settings: &Archipelago,
     queue: &mut Vec<(usize, usize)>,
     height_patch: &mut HeightPatch,
 ) {
@@ -312,7 +313,7 @@ fn seed_array_with_poly_center(
     let min_y = height_patch.min_y;
     let max_y = height_patch.min_y + height_patch.height;
 
-    let tile_side = nav_mesh_settings.get_tile_side_with_border();
+    let tile_side = vox_settings.get_tile_side_with_border();
 
     for &vertex in vertices {
         for &(offset_x, offset_y) in &OFFSETS {
@@ -324,8 +325,8 @@ fn seed_array_with_poly_center(
                 continue;
             }
 
-            let cell_i = (ax + nav_mesh_settings.walkable_radius) as usize
-                + (az + nav_mesh_settings.walkable_radius) as usize * tile_side;
+            let cell_i = (ax + vox_settings.walkable_radius) as usize
+                + (az + vox_settings.walkable_radius) as usize * tile_side;
             let cell = &open_tile.cells[cell_i];
             for (span_i, open_span) in cell.spans.iter().enumerate() {
                 let height_difference = ay.abs_diff(open_span.min);

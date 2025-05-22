@@ -43,9 +43,7 @@ fn default_binding(
             Cardinal::wasd_keys().with_conditions_each(BlockBy::<EnableSprint>::default()),
             Cardinal::wasd_keys()
                 .with_conditions_each(Chord::<EnableSprint>::default())
-                .with_modifiers_each(Scale::splat(10.0)),
-            Axial::left_stick(),
-            Cardinal::arrow_keys(),
+                .with_modifiers_each(Scale::splat(10.0)),            
         ))
         // Don't trigger the action when the chord is active.
         .with_modifiers((

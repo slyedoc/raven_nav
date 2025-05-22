@@ -7,8 +7,22 @@ use avian3d::{
     prelude::*,
 };
 use bevy::prelude::*;
+use smallvec::SmallVec;
 
 use crate::conversion::{ColliderType, GeometryToConvert};
+
+/// Add this to any compoent with a Collider to indicate that it is a nav-mesh affector.
+#[derive(Component, Default, Reflect)]
+pub struct NavMeshAffector(pub Area);
+
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Reflect)]
+pub struct Area(pub u16);
+
+/// Added to colliders when they need to update tile affectors, will be removed after
+#[derive(Component, Reflect)]
+#[reflect(Component)]
+pub struct UpdateTileAffectors;
 
 pub enum GeometryResult<'a> {
     Compound(Vec<(Isometry<f32>, GeometryResult<'a>)>),

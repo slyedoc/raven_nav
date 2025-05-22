@@ -1,12 +1,12 @@
 use std::{cmp::Ordering, ops::Div, sync::Arc};
 
 use avian3d::parry::shape::HeightField;
-use bevy::{math::Vec3A, prelude::*};
+use bevy::{asset::transformer, math::Vec3A, prelude::*};
 use smallvec::SmallVec;
 
-use crate::{Area, conversion::Triangles};
+use crate::{Area, archipelago::Archipelago, conversion::Triangles};
 
-use super::{NavMeshSettings, get_neighbour_index};
+use super::get_neighbour_index;
 
 #[derive(Default, Clone, Debug)]
 struct HeightSpan {
@@ -53,66 +53,68 @@ pub struct OpenTile {
 }
 
 pub(super) struct TriangleCollection {
-    pub(super) transform: Transform,
+    pub(super) transform: GlobalTransform,
     pub(super) triangles: Triangles,
     pub(super) area: Option<Area>,
 }
 
 pub struct HeightFieldCollection {
-    pub transform: Transform,
-    pub heightfield: HeightField,
+    pub transform: GlobalTransform,
+    pub heightfield: Arc<HeightField>,
     pub area: Option<Area>,
 }
 
-pub(super) fn build_heightfield_tile(
-    tile_coord: UVec2,
+pub(super) fn build_heightfield_tile(    
+    config: &Archipelago,
     triangle_collections: &[TriangleCollection],
-    heightfields: &[Arc<HeightFieldCollection>],
-    nav_mesh_settings: &NavMeshSettings,
+    heightfields: &[HeightFieldCollection],    
 ) -> VoxelizedTile {
-    let tile_side = nav_mesh_settings.get_tile_side_with_border();
+    let tile_side = config.get_tile_side_with_border();
     let mut voxel_tile = VoxelizedTile {
         cells: vec![VoxelCell::default(); tile_side.pow(2)].into_boxed_slice(),
     };
 
     let tile_max_bound = IVec3::new((tile_side - 1) as i32, 0, (tile_side - 1) as i32);
-
-    let tile_origin = nav_mesh_settings.get_tile_origin_with_border(tile_coord);
-    let tile_origin = Vec3A::new(
-        tile_origin.x,
-        nav_mesh_settings.world_bottom_bound,
-        tile_origin.y,
-    );
+    let tile_min_bound = Vec3A::from(config.get_tile_minimum_bound_with_border());
+    //let tile_origin = Vec3A::from(config.get_tile_origin_with_border(tile_coord, transform));
 
     let mut translated_vertices = Vec::default();
 
-    for collection in triangle_collections.iter() {
+    for TriangleCollection {
+        transform,
+        triangles,
+        area,
+    } in triangle_collections.iter()
+    {
         // TODO: This might be wrong for avian or custom parry3d colliders, but I can't figure out a nice way to know whether or not we're actually dealing with a rapier3d collider.
-        let transform = collection.transform.with_scale(Vec3::ONE).compute_affine(); // The collider returned from rapier already has scale applied to it, so we reset it here.
+        //let transform = collection.transform.with_scale(Vec3::ONE).compute_affine(); // The collider returned from rapier already has scale applied to it, so we reset it here.
 
-        match &collection.triangles {
+        match triangles {
             Triangles::Triangle(vertices) => {
-                let translated_vertices =
-                    vertices.map(|vertex| transform.transform_point3a(vertex.into()) - tile_origin);
-
+                let v = vertices
+                    .map(Vec3A::from)
+                    .map(|v| v - tile_min_bound)
+                    .map(|vertex| transform.affine().transform_point3a(vertex.into()));
+                //let v = vertices.map(|vertex| transform.affine().transform_point3a(vertex.into()) - tile_origin);
                 process_triangle(
-                    translated_vertices[0],
-                    translated_vertices[1],
-                    translated_vertices[2],
-                    nav_mesh_settings,
+                    v[0],
+                    v[1],
+                    v[2],
+                    config,
                     tile_max_bound,
                     tile_side,
                     &mut voxel_tile.cells,
-                    collection.area,
+                    *area,
                 );
             }
             Triangles::TriMesh(vertices, triangles) => {
                 translated_vertices.clear();
-                translated_vertices.extend(
-                    vertices
-                        .iter()
-                        .map(|vertex| transform.transform_point3a((*vertex).into()) - tile_origin),
-                ); // Transform vertices.
+                let v = vertices
+                    .iter()
+                    .map(|vertex| Vec3A::from(*vertex))
+                    .map(|vertex| vertex - tile_min_bound)
+                    .map(|vertex| transform.affine().transform_point3a(vertex.into()));
+                translated_vertices.extend(v); // Transform vertices.
 
                 for triangle in triangles.iter() {
                     let a = translated_vertices[triangle[0] as usize];
@@ -123,11 +125,11 @@ pub(super) fn build_heightfield_tile(
                         a,
                         b,
                         c,
-                        nav_mesh_settings,
+                        config,
                         tile_max_bound,
                         tile_side,
                         &mut voxel_tile.cells,
-                        collection.area,
+                        *area,
                     );
                 }
             }
@@ -136,24 +138,19 @@ pub(super) fn build_heightfield_tile(
 
     for collection in heightfields.iter() {
         // TODO: This might be wrong for avian or custom parry3d colliders, but I can't figure out a nice way to know whether or not we're actually dealing with a rapier3d collider.
-        let transform = collection.transform.with_scale(Vec3::ONE).compute_affine(); // The collider returned from rapier already has scale applied to it, so we reset it here.
+        //let transform = collection.transform.with_scale(Vec3::ONE).compute_affine(); // The collider returned from rapier already has scale applied to it, so we reset it here.
 
         for triangle in collection.heightfield.triangles() {
-            let a =
-                transform.transform_point3a(Vec3A::new(triangle.a.x, triangle.a.y, triangle.a.z))
-                    - tile_origin;
-            let b =
-                transform.transform_point3a(Vec3A::new(triangle.b.x, triangle.b.y, triangle.b.z))
-                    - tile_origin;
-            let c =
-                transform.transform_point3a(Vec3A::new(triangle.c.x, triangle.c.y, triangle.c.z))
-                    - tile_origin;
+            let v = [triangle.a, triangle.b, triangle.c]
+                .map(Vec3A::from)
+                .map(|vertex| vertex - tile_min_bound)
+                .map(|vertex| collection.transform.affine().transform_point3a(vertex));
 
             process_triangle(
-                a,
-                b,
-                c,
-                nav_mesh_settings,
+                v[0],
+                v[1],
+                v[2],
+                config,
                 tile_max_bound,
                 tile_side,
                 &mut voxel_tile.cells,
@@ -170,14 +167,14 @@ fn process_triangle(
     a: Vec3A,
     b: Vec3A,
     c: Vec3A,
-    nav_mesh_settings: &NavMeshSettings,
+    vox_settings: &Archipelago,
     tile_max_bound: IVec3,
     tile_side: usize,
     voxel_cells: &mut [VoxelCell],
     area: Option<Area>,
 ) {
-    let min_bound = a.min(b).min(c).div(nav_mesh_settings.cell_width).as_ivec3();
-    let max_bound = a.max(b).max(c).div(nav_mesh_settings.cell_width).as_ivec3();
+    let min_bound = a.min(b).min(c).div(vox_settings.cell_width).as_ivec3();
+    let max_bound = a.max(b).max(c).div(vox_settings.cell_width).as_ivec3();
 
     // Check if triangle is completely outside the tile.
     if max_bound.x < 0
@@ -190,7 +187,7 @@ fn process_triangle(
 
     let clamped_bound_min = min_bound.max(IVec3::ZERO);
     let clamped_bound_max = max_bound.min(tile_max_bound) + IVec3::ONE;
-    let traversable = is_triangle_traversable(a, b, c, nav_mesh_settings);
+    let traversable = is_triangle_traversable(a, b, c, vox_settings);
     let vertices = [a, b, c];
 
     // For cache reasons we go.
@@ -201,8 +198,8 @@ fn process_triangle(
     // X is column. Z is row.
     // Which means we iterate Z first.
     for z in clamped_bound_min.z..clamped_bound_max.z {
-        let row_clip_min = z as f32 * nav_mesh_settings.cell_width;
-        let row_clip_max = row_clip_min + nav_mesh_settings.cell_width;
+        let row_clip_min = z as f32 * vox_settings.cell_width;
+        let row_clip_max = row_clip_min + vox_settings.cell_width;
 
         // Clip polygon to the row.
         // TODO: This is awful & too complicated.
@@ -225,14 +222,13 @@ fn process_triangle(
             column_min_vert_x = column_min_vert_x.min(vertex.x);
             column_max_vert_x = column_max_vert_x.max(vertex.x);
         }
-        let column_min = ((column_min_vert_x / nav_mesh_settings.cell_width) as i32).max(0);
-        let column_max = ((column_max_vert_x / nav_mesh_settings.cell_width) as i32)
-            .min((tile_side - 1) as i32)
-            + 1;
+        let column_min = ((column_min_vert_x / vox_settings.cell_width) as i32).max(0);
+        let column_max =
+            ((column_max_vert_x / vox_settings.cell_width) as i32).min((tile_side - 1) as i32) + 1;
 
         for x in column_min..column_max {
-            let column_clip_min = x as f32 * nav_mesh_settings.cell_width;
-            let column_clip_max = column_clip_min + nav_mesh_settings.cell_width;
+            let column_clip_min = x as f32 * vox_settings.cell_width;
+            let column_clip_max = column_clip_min + vox_settings.cell_width;
 
             // Clip polygon to column.
             let (column_min_clip_vert_count, column_min_clip_verts) =
@@ -259,8 +255,8 @@ fn process_triangle(
                 continue;
             }
 
-            let min_height = (square_min_height / nav_mesh_settings.cell_height) as u16;
-            let max_height = (square_max_height / nav_mesh_settings.cell_height) as u16;
+            let min_height = (square_min_height / vox_settings.cell_height) as u16;
+            let max_height = (square_max_height / vox_settings.cell_height) as u16;
 
             let index = x as usize + z as usize * tile_side;
             let cell = &mut voxel_cells[index];
@@ -317,18 +313,13 @@ fn process_triangle(
     }
 }
 
-fn is_triangle_traversable(
-    a: Vec3A,
-    b: Vec3A,
-    c: Vec3A,
-    nav_mesh_settings: &NavMeshSettings,
-) -> bool {
+fn is_triangle_traversable(a: Vec3A, b: Vec3A, c: Vec3A, vox_settings: &Archipelago) -> bool {
     let ab = b - a;
     let ac = c - a;
     let normal = ab.cross(ac).normalize();
     let slope = normal.dot(Vec3A::Y).acos();
 
-    slope < nav_mesh_settings.max_traversable_slope_radians
+    slope < vox_settings.max_traversable_slope_degrees.to_radians()
 }
 
 /*
@@ -406,7 +397,7 @@ fn divide_polygon(
 
 pub fn build_open_heightfield_tile(
     voxelized_tile: VoxelizedTile,
-    nav_mesh_settings: &NavMeshSettings,
+    vox_settings: &Archipelago,
 ) -> OpenTile {
     let mut cells = vec![OpenCell::default(); voxelized_tile.cells.len()];
     let mut span_count = 0;
@@ -426,7 +417,7 @@ pub fn build_open_heightfield_tile(
 
             if let Some(next_span) = iter.peek() {
                 // Need to check if space is large enough.
-                if next_span.min - span.max >= nav_mesh_settings.walkable_height {
+                if next_span.min - span.max >= vox_settings.walkable_height {
                     open_spans.push(OpenSpan {
                         min: span.max,
                         max: Some(next_span.min),
@@ -472,16 +463,16 @@ pub fn build_open_heightfield_tile(
     {
         #[cfg(feature = "trace")]
         let _span = info_span!("Link neighbours").entered();
-        link_neighbours(&mut open_tile, nav_mesh_settings);
+        link_neighbours(&mut open_tile, vox_settings);
     }
 
     open_tile
 }
 
-fn link_neighbours(open_tile: &mut OpenTile, nav_mesh_settings: &NavMeshSettings) {
+fn link_neighbours(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
     let mut neighbour_spans = Vec::with_capacity(3);
 
-    let tile_side = nav_mesh_settings.get_tile_side_with_border();
+    let tile_side = vox_settings.get_tile_side_with_border();
     for i in 0..open_tile.cells.len() {
         if open_tile.cells[i].spans.is_empty() {
             continue;
@@ -523,12 +514,12 @@ fn link_neighbours(open_tile: &mut OpenTile, nav_mesh_settings: &NavMeshSettings
                 for (i, (min, max)) in neighbour_spans.iter().enumerate() {
                     if let Some((max, span_max)) = max.zip(span.max) {
                         let gap = span_max.min(max).abs_diff(span.min.max(*min));
-                        if gap < nav_mesh_settings.walkable_height {
+                        if gap < vox_settings.walkable_height {
                             continue;
                         }
                     }
 
-                    if min.abs_diff(span.min) < nav_mesh_settings.step_height {
+                    if min.abs_diff(span.min) < vox_settings.step_height {
                         span.neighbours[neighbour] = Some(i as u16);
                         break;
                     }
@@ -538,8 +529,8 @@ fn link_neighbours(open_tile: &mut OpenTile, nav_mesh_settings: &NavMeshSettings
     }
 }
 
-pub fn erode_walkable_area(open_tile: &mut OpenTile, nav_mesh_settings: &NavMeshSettings) {
-    let tile_side = nav_mesh_settings.get_tile_side_with_border();
+pub fn erode_walkable_area(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
+    let tile_side = vox_settings.get_tile_side_with_border();
     // Mark boundary cells.
     for (i, cell) in open_tile.cells.iter().enumerate() {
         for span in cell.spans.iter() {
@@ -565,10 +556,10 @@ pub fn erode_walkable_area(open_tile: &mut OpenTile, nav_mesh_settings: &NavMesh
         }
     }
 
-    filter_tile(open_tile, nav_mesh_settings);
+    filter_tile(open_tile, vox_settings);
 
     // Any cell within 2*walkable_radius is considered unwalkable. This ensures characters won't clip into walls.
-    let threshold = nav_mesh_settings.walkable_radius * 2;
+    let threshold = vox_settings.walkable_radius * 2;
     for i in 0..open_tile.span_count {
         if open_tile.distances[i] < threshold {
             open_tile.areas[i] = None;
@@ -576,8 +567,8 @@ pub fn erode_walkable_area(open_tile: &mut OpenTile, nav_mesh_settings: &NavMesh
     }
 }
 
-pub fn calculate_distance_field(open_tile: &mut OpenTile, nav_mesh_settings: &NavMeshSettings) {
-    let tile_side = nav_mesh_settings.get_tile_side_with_border();
+pub fn calculate_distance_field(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
+    let tile_side = vox_settings.get_tile_side_with_border();
     // Mark boundary cells.
     for (i, cell) in open_tile.cells.iter().enumerate() {
         for span in cell.spans.iter() {
@@ -598,7 +589,7 @@ pub fn calculate_distance_field(open_tile: &mut OpenTile, nav_mesh_settings: &Na
         }
     }
 
-    filter_tile(open_tile, nav_mesh_settings);
+    filter_tile(open_tile, vox_settings);
 
     open_tile.max_distance = *open_tile.distances.iter().max().unwrap_or(&0);
 
@@ -649,8 +640,8 @@ pub fn calculate_distance_field(open_tile: &mut OpenTile, nav_mesh_settings: &Na
     // End Box Blur
 }
 
-fn filter_tile(open_tile: &mut OpenTile, nav_mesh_settings: &NavMeshSettings) {
-    let tile_side = nav_mesh_settings.get_tile_side_with_border();
+fn filter_tile(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
+    let tile_side = vox_settings.get_tile_side_with_border();
     // Pass 1.
     for (i, cell) in open_tile.cells.iter().enumerate() {
         for span in cell.spans.iter() {

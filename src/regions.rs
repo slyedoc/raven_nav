@@ -3,7 +3,8 @@ use crate::{
     heightfields::{OpenSpan, OpenTile},
 };
 
-use super::{NavMeshSettings, get_neighbour_index};
+use super::{get_neighbour_index};
+use crate::archipelago::Archipelago;
 
 #[derive(Default, Clone, Copy)]
 struct LevelStackEntry {
@@ -16,8 +17,8 @@ const EXPAND_ITERS: u16 = 8;
 const LOG_NB_STACKS: i32 = 3;
 const NB_STACKS: i32 = 1 << LOG_NB_STACKS; // 8.
 
-pub fn build_regions(open_tile: &mut OpenTile, nav_mesh_settings: &NavMeshSettings) {
-    let tile_side = nav_mesh_settings.get_tile_side_with_border();
+pub fn build_regions(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
+    let tile_side = vox_settings.get_tile_side_with_border();
     let mut regions = vec![0; open_tile.span_count];
     let mut distances = vec![0; open_tile.span_count];
     let mut dirty_entries = Vec::with_capacity(512);
@@ -96,7 +97,7 @@ pub fn build_regions(open_tile: &mut OpenTile, nav_mesh_settings: &NavMeshSettin
 
     // Merge regions and filter out small ones.
     merge_regions(
-        nav_mesh_settings,
+        vox_settings,
         tile_side,
         &mut regions,
         &mut region_id,
@@ -329,7 +330,7 @@ struct Region {
 }
 
 fn merge_regions(
-    nav_mesh_settings: &NavMeshSettings,
+    vox_settings: &Archipelago,
     tile_side: usize,
     source_regions: &mut [u16],
     max_region_id: &mut u16,
@@ -451,7 +452,7 @@ fn merge_regions(
             }
         }
 
-        if span_count < nav_mesh_settings.min_region_area as usize {
+        if span_count < vox_settings.min_region_area as usize {
             for trace in &trace {
                 let region = &mut regions[*trace as usize];
                 region.span_count = 0;
@@ -471,7 +472,7 @@ fn merge_regions(
                     continue;
                 }
 
-                if region.span_count > nav_mesh_settings.max_region_area_to_merge_into as usize
+                if region.span_count > vox_settings.max_region_area_to_merge_into as usize
                     && region.connections.contains(&0)
                 {
                     continue;

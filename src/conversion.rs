@@ -3,12 +3,12 @@ use avian3d::parry::{
     na::Point3,
     shape::{Ball, Capsule, Cone, Cuboid, Cylinder, Triangle},
 };
-use bevy::prelude::{Transform, Vec3};
+use bevy::prelude::*;
 
-use crate::{Area, heightfields::TriangleCollection};
+use crate::{collider::Area, heightfields::TriangleCollection};
 
 pub struct GeometryCollection {
-    pub transform: Transform,
+    pub transform: GlobalTransform,
     pub geometry_to_convert: GeometryToConvert,
     pub area: Option<Area>,
 }
@@ -71,39 +71,8 @@ impl Triangles {
 
 const SUBDIVISIONS: u32 = 5;
 
-pub(super) fn convert_geometry_collections(
-    geometry_collections: Vec<GeometryCollection>,
-) -> Box<[TriangleCollection]> {
-    geometry_collections
-        .into_iter()
-        .map(|geometry_collection| TriangleCollection {
-            transform: geometry_collection.transform,
-            triangles: convert_geometry(geometry_collection.geometry_to_convert),
-            area: geometry_collection.area,
-        })
-        .collect()
-}
-
-pub(super) fn convert_geometry(geometry_to_convert: GeometryToConvert) -> Triangles {
-    match geometry_to_convert {
-        GeometryToConvert::Collider(collider) => rasterize_collider(collider),
-        GeometryToConvert::ParryTriMesh(vertices, triangles) => {
-            let vertices = vertices
-                .iter()
-                .map(|point| Vec3::new(point.x, point.y, point.z))
-                .collect();
-
-            Triangles::TriMesh(vertices, triangles)
-        }
-    }
-}
-
-fn rasterize_collider(collider: ColliderType) -> Triangles {
-    let triangles = Triangles::default();
-    rasterize_collider_inner(collider, triangles)
-}
-
-fn rasterize_collider_inner(collider: ColliderType, memoized_triangles: Triangles) -> Triangles {
+/// Rasterizes a collider into a collection of triangles.
+pub(crate) fn rasterize_collider_inner(collider: ColliderType, memoized_triangles: Triangles) -> Triangles {
     let (vertices, triangles) = match collider {
         ColliderType::Cuboid(cuboid) => cuboid.to_trimesh(),
         ColliderType::Ball(ball) => ball.to_trimesh(SUBDIVISIONS, SUBDIVISIONS),
@@ -114,7 +83,7 @@ fn rasterize_collider_inner(collider: ColliderType, memoized_triangles: Triangle
             let triangle = Triangles::Triangle(
                 triangle
                     .vertices()
-                    .map(|point| Vec3::new(point.x, point.y, point.z)),
+                    .map(Vec3::from),
             );
 
             return memoized_triangles.extend(triangle);
@@ -130,7 +99,7 @@ fn rasterize_collider_inner(collider: ColliderType, memoized_triangles: Triangle
 
     let vertices = vertices
         .into_iter()
-        .map(|point| Vec3::new(point.x, point.y, point.z))
+        .map(Vec3::from)
         .collect();
 
     let trimesh = Triangles::TriMesh(vertices, triangles.into_boxed_slice());
