@@ -14,6 +14,7 @@ debug_draw = [
 trace = [
     "bevy/trace"
 ]
+heightfield-prune = []
 
 [dependencies]
 bevy = "0.16"

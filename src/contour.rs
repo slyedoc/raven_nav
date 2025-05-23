@@ -1,9 +1,6 @@
 use std::cmp::Ordering;
 
-use bevy::{
-    log::{info_span, warn},
-    prelude::{IVec2, UVec2, UVec4},
-};
+use bevy::prelude::*;
 
 use crate::{
     archipelago::Archipelago,

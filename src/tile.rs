@@ -38,7 +38,7 @@ pub(crate) async fn build_tile(
     let _span = info_span!("Build Tile", name = "raven::build_tile").entered();
 
     let triangle_collection: Vec<TriangleCollection> = convert_geometry(geometry_collections);
-    let voxelized_tile = build_heightfield_tile(&archipelago, &triangle_collection, &heightfield_collections);
+    let voxelized_tile = build_heightfield_tile(&archipelago, triangle_collection, heightfield_collections);
     let mut open_tile = build_open_heightfield_tile(voxelized_tile, &archipelago);
     erode_walkable_area(&mut open_tile, &archipelago);    
     calculate_distance_field(&mut open_tile, &archipelago);
@@ -50,7 +50,7 @@ pub(crate) async fn build_tile(
 
 fn convert_geometry(geometry_collections: Vec<GeometryCollection>) -> Vec<TriangleCollection> {
     #[cfg(feature = "trace")]
-    let _span = info_span!("Convert Geometry Collections", name = "raven::").entered();
+    let _span = info_span!("raven::convert_geometry").entered();
     geometry_collections
         .into_iter()
         .map(|geometry_collection| TriangleCollection {

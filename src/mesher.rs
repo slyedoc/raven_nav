@@ -1,8 +1,4 @@
-use bevy::{
-    log::{info, info_span},
-    math::U16Vec3,
-    prelude::{UVec2, UVec4},
-};
+use bevy::{math::U16Vec3, prelude::*};
 
 use super::math::{intersect, intersect_prop, left, left_on};
 use crate::{

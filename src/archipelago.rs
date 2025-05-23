@@ -282,6 +282,7 @@ impl Archipelago {
     pub fn get_tile_side_with_border(&self) -> usize {
         usize::from(self.tile_width.get()) + usize::from(self.walkable_radius) * 2
     }
+    
     #[inline]
     pub fn get_border_side(&self) -> usize {
         // Not technically useful currently but in case.

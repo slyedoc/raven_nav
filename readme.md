@@ -9,6 +9,7 @@ Creating this to get a better understanding of navmeshes for myself, and I only 
 99% of this codebase are derived from the following, and you should go use them most likely:
 
 - [x] [oxidized_navigation](https://github.com/TheGrimsey/oxidized_navigation)
+  - [ ] [recastnavigation](https://github.com/recastnavigation/recastnavigation/)
 - [ ] [landmass](https://github.com/andriyDev/landmass)
 
 ## Notes

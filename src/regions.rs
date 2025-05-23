@@ -1,4 +1,4 @@
-use bevy::log::info_span;
+use bevy::prelude::*;
 
 use crate::{
     Area,

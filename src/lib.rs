@@ -1,3 +1,6 @@
+#![feature(test)]
+extern crate test;
+
 use std::sync::Arc;
 
 use agent::{Agent, AgentArchipelago, AgentSettings};
@@ -280,7 +283,7 @@ fn update_navmesh_affectors(
             );
             let max_tile = archipelago.get_tile_containing_position(max_vec, arch_transform);
 
-            // TODO: looping thouh all islands for every collider may not optimal,
+            // TODO: looping though all tiles for every collider not ideal,
             // maybe use sensors collisions? need to bench this vs old way way, but tile affectors and NavMeshAffectorRelations
             // where doing about the same thing
             for (tile_cord, tile) in lookup.iter() {
@@ -393,7 +396,7 @@ fn start_tile_build_tasks(
     }
 }
 
-/// Updates the island (or creates one) corresponding to the tile when a tile is generated.
+/// Checks status of tile builds
 fn update_tile_build_tasks(
     mut commands: Commands,
     mut archipelago_query: Query<&mut ActiveGenerationTasks, With<Archipelago>>,    
@@ -472,7 +475,7 @@ fn handle_geometry_result(
             });
         }
         GeometryResult::Heightfield(heightfield) => {
-            // Deduplicate heightfields.
+            // Don't Duplicate heightfields.
             let heightfield = if let Some(heightfield_arc) = entity_heightfield_map.get(&entity) {
                 HeightFieldCollection {
                     transform: collider_transform,

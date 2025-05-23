@@ -1,6 +1,11 @@
 use std::{cmp::Ordering, ops::Div, sync::Arc};
 
-use avian3d::parry::shape::HeightField;
+use avian3d::parry::{
+    bounding_volume::Aabb,
+    math::Isometry,
+    na::Point3,
+    shape::HeightField,
+};
 use bevy::{math::Vec3A, prelude::*};
 use smallvec::SmallVec;
 
@@ -23,7 +28,7 @@ struct VoxelCell {
 
 #[derive(Default)]
 pub struct VoxelizedTile {
-    cells: Box<[VoxelCell]>, // len = tiles_along_width^2. Laid out X to Y
+    cells: Vec<VoxelCell>, // len = tiles_along_width^2. Laid out X to Y
 }
 
 #[derive(Default, Clone, Debug)]
@@ -66,24 +71,24 @@ pub struct HeightFieldCollection {
 
 pub(super) fn build_heightfield_tile(
     config: &Archipelago,
-    triangle_collections: &[TriangleCollection],
-    heightfields: &[HeightFieldCollection],
+    triangle_collections: Vec<TriangleCollection>,
+    heightfields: Vec<HeightFieldCollection>,
 ) -> VoxelizedTile {
 
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::build_heightfield_tile").entered();
-    
+
+    //let t1 = Instant::now();
+
+    // Allocate the tile.
     let tile_side = config.get_tile_side_with_border();
     let mut voxel_tile = VoxelizedTile {
-        cells: vec![VoxelCell::default(); tile_side.pow(2)].into_boxed_slice(),
+        cells: vec![VoxelCell::default(); tile_side.pow(2)],
     };
-
     let tile_max_bound = IVec3::new((tile_side - 1) as i32, 0, (tile_side - 1) as i32);
     let tile_min_bound = Vec3A::from(config.get_tile_minimum_bound_with_border());
-    //let tile_origin = Vec3A::from(config.get_tile_origin_with_border(tile_coord, transform));
 
-    let mut translated_vertices = Vec::default();
-
+    // Build triangles list
     for TriangleCollection {
         transform,
         triangles,
@@ -91,15 +96,12 @@ pub(super) fn build_heightfield_tile(
     } in triangle_collections.iter()
     {
         // TODO: This might be wrong for avian or custom parry3d colliders, but I can't figure out a nice way to know whether or not we're actually dealing with a rapier3d collider.
-        //let transform = collection.transform.with_scale(Vec3::ONE).compute_affine(); // The collider returned from rapier already has scale applied to it, so we reset it here.
+        //let transform = transform.with_scale(Vec3::ONE).compute_affine(); // The collider returned from rapier already has scale applied to it, so we reset it here.
 
         match triangles {
             Triangles::Triangle(vertices) => {
                 let v = vertices
-                    .map(Vec3A::from)
-                    .map(|v| v - tile_min_bound)
-                    .map(|vertex| transform.affine().transform_point3a(vertex.into()));
-                //let v = vertices.map(|vertex| transform.affine().transform_point3a(vertex.into()) - tile_origin);
+                    .map(|vertex| transform.affine().transform_point3a(Vec3A::from(vertex)) - tile_min_bound);
                 process_triangle(
                     v[0],
                     v[1],
@@ -112,23 +114,16 @@ pub(super) fn build_heightfield_tile(
                 );
             }
             Triangles::TriMesh(vertices, triangles) => {
-                translated_vertices.clear();
                 let v = vertices
                     .iter()
-                    .map(|vertex| Vec3A::from(*vertex))
-                    .map(|vertex| vertex - tile_min_bound)
-                    .map(|vertex| transform.affine().transform_point3a(vertex.into()));
-                translated_vertices.extend(v); // Transform vertices.
+                    .map(|vertex| transform.affine().transform_point3a(Vec3A::from(*vertex)) - tile_min_bound)
+                    .collect::<Vec<_>>();
 
-                for triangle in triangles.iter() {
-                    let a = translated_vertices[triangle[0] as usize];
-                    let b = translated_vertices[triangle[1] as usize];
-                    let c = translated_vertices[triangle[2] as usize];
-
+                for triangle in triangles.iter() {                    
                     process_triangle(
-                        a,
-                        b,
-                        c,
+                        v[triangle[0] as usize],
+                        v[triangle[1] as usize],
+                        v[triangle[2] as usize],
                         config,
                         tile_max_bound,
                         tile_side,
@@ -140,32 +135,100 @@ pub(super) fn build_heightfield_tile(
         }
     }
 
-    for collection in heightfields.iter() {
-        // TODO: This might be wrong for avian or custom parry3d colliders, but I can't figure out a nice way to know whether or not we're actually dealing with a rapier3d collider.
-        //let transform = collection.transform.with_scale(Vec3::ONE).compute_affine(); // The collider returned from rapier already has scale applied to it, so we reset it here.
+    for hf in heightfields.iter() {
+        // process_triangle is slow, so we are goign to filter out triangles we can before hand
+        // build tile aabb
+        let title_size = config.get_tile_size();
+        let half = title_size * 0.5;
+        let pad = config.cell_width; // add padding to the aabb to avoid slight gap between tiles
+        let min = Point3::new(-half - pad, -config.world_half_extents.y, -half - pad);
+        let max = Point3::new(half + pad, config.world_half_extents.y, half + pad);
+        let tile_aabb = Aabb::new(min, max);
 
-        for triangle in collection.heightfield.triangles() {
-            let v = [triangle.a, triangle.b, triangle.c]
-                .map(Vec3A::from)
-                .map(|vertex| vertex - tile_min_bound)
-                .map(|vertex| collection.transform.affine().transform_point3a(vertex));
+        // use hf transform which is already in tile local space to create a tile to hf aabb
+        let collider_trans = hf.transform.compute_transform();
+        let hf_to_tile_iso = Isometry::new(
+            collider_trans.translation.into(),
+            collider_trans.rotation.to_scaled_axis().into(),
+        );
+        let tile_to_hf_iso = hf_to_tile_iso.inverse();
+        let hf_local_aabb = tile_aabb.transform_by(&tile_to_hf_iso);
 
-            process_triangle(
-                v[0],
-                v[1],
-                v[2],
-                config,
-                tile_max_bound,
-                tile_side,
-                &mut voxel_tile.cells,
-                collection.area,
-            );
-        }
+        // only use triangles in the aabb
+        hf.heightfield
+            .map_elements_in_local_aabb(&hf_local_aabb, &mut |_i, t| {
+                process_triangle(
+                    hf.transform.affine().transform_point3a(Vec3A::from(t.a)) - tile_min_bound,
+                    hf.transform.affine().transform_point3a(Vec3A::from(t.b)) - tile_min_bound,
+                    hf.transform.affine().transform_point3a(Vec3A::from(t.c)) - tile_min_bound,
+                    config,
+                    tile_max_bound,
+                    tile_side,
+                    &mut voxel_tile.cells,
+                    hf.area,
+                );
+            });
     }
+
+    // let t2 = Instant::now();
+    // let time1 = t2.duration_since(t1);
+    // println!("Voxelize time: {time1:?}");
 
     voxel_tile
 }
 
+#[cfg(test)]
+
+mod tests {
+    use super::*;
+    use test::Bencher;
+
+    #[test]
+    fn test_build_heightfield_tile() {
+
+        // build heightfield
+        let resolution = 250;
+        let oct = 10.0;
+        let height_scale = 8.0;
+        let scale = Vec3::new(resolution as f32, height_scale, resolution as f32);
+
+        let mut heightfield = vec![vec![0.0; resolution]; resolution];
+        for x in 0..resolution {
+            for y in 0..resolution {
+                heightfield[x][y] = (x as f32 / oct).sin() + (y as f32 / oct).cos();
+            }
+        }
+
+        let height_collider = avian3d::prelude::Collider::heightfield(heightfield, scale);
+        // Get the geometry type
+        let geometry_result = height_collider.shape_scaled().as_typed_shape();
+
+        // Convert the collider's transform to the tile's local space
+        // let transform = GlobalTransform::from(
+        //     tile_transform.affine().inverse() * collider_transform.affine(),
+        // );
+        let heightfield = match geometry_result {
+            avian3d::parry::shape::TypedShape::HeightField(hf) => HeightFieldCollection {
+                transform: GlobalTransform::IDENTITY,
+                heightfield: Arc::new(hf.clone()),
+                area: Some(Area(0)),
+            },
+            _ => unreachable!(),
+        };
+        let mut heightfield_collections = Vec::new();
+        heightfield_collections.push(heightfield);
+
+        let config = Archipelago::new(0.5, 1.9, Vec3::splat(50.0));
+        let _voxel_tile = build_heightfield_tile(&config, vec![], heightfield_collections);
+    }
+
+    #[bench]
+    fn bench_build_heightfield_tile(b: &mut Bencher) {
+        b.iter(|| {
+            test_build_heightfield_tile();
+        });
+    }
+}
 
 // TODO: This is the hot path and should be optimized.
 #[allow(clippy::too_many_arguments)]
@@ -319,12 +382,12 @@ fn process_triangle(
     }
 }
 
+#[inline]
 fn is_triangle_traversable(a: Vec3A, b: Vec3A, c: Vec3A, vox_settings: &Archipelago) -> bool {
     let ab = b - a;
     let ac = c - a;
     let normal = ab.cross(ac).normalize();
     let slope = normal.dot(Vec3A::Y).acos();
-
     slope < vox_settings.max_traversable_slope_degrees.to_radians()
 }
 
@@ -401,15 +464,12 @@ fn divide_polygon(
     }
 }
 
-
 pub fn build_open_heightfield_tile(
     voxelized_tile: VoxelizedTile,
     vox_settings: &Archipelago,
 ) -> OpenTile {
-
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::build_open_heightfield_tile").entered();
-
 
     let mut cells = vec![OpenCell::default(); voxelized_tile.cells.len()];
     let mut span_count = 0;

@@ -1,5 +1,5 @@
 use bevy::{
-    color::palettes::{css, tailwind},
+    color::palettes::tailwind,
     gizmos::{AppGizmoBuilder, config::GizmoConfigGroup},
     math::bounding::BoundingVolume,
     prelude::*,
@@ -11,6 +11,7 @@ use crate::{Bounding, archipelago::*, nav_mesh::*, tile::*};
 
 #[derive(Default)]
 pub struct RavenDebugPlugin {
+    //pub depth_bias: f32,
     pub render_layer: RenderLayers,
 }
 
@@ -19,7 +20,7 @@ impl Plugin for RavenDebugPlugin {
         app.insert_gizmo_config(
             RavenGizmos::default(),
             GizmoConfig {
-                depth_bias: -1.0,
+                depth_bias: -0.1,
                 render_layers: self.render_layer.clone(),
                 ..Default::default()
             },
@@ -50,10 +51,10 @@ pub struct RavenGizmos {
 impl Default for RavenGizmos {
     fn default() -> Self {
         Self {
-            archipelago_bounds: Some(tailwind::RED_100.into()),
-            tile_bounds: None, //Some(css::RED.into()),
-            tile_polygons: Some(css::GREEN.into()),
-            tile_edges: Some(css::BLUE.into()),
+            archipelago_bounds: Some(tailwind::GRAY_300.with_alpha(0.5).into()),
+            tile_bounds: Some(tailwind::RED_600.with_alpha(0.5).into()),
+            tile_polygons: Some(tailwind::GREEN_500.into()),
+            tile_edges: Some(tailwind::BLUE_500.into()),
         }
     }
 }
