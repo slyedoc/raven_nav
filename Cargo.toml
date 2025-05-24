@@ -42,3 +42,7 @@ required-features = ["debug_draw"]
 [[example]]
 name = "multi"
 required-features = ["debug_draw"]
+
+[[example]]
+name = "agent"
+required-features = ["debug_draw"]

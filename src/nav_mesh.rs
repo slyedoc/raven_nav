@@ -1,12 +1,14 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering};
 
 use bevy::{
+    math::bounding::{Aabb3d, IntersectsVolume},
     platform::collections::{HashMap, HashSet},
     prelude::*,
-    render::primitives::Aabb,
 };
 use disjoint::DisjointSet;
 use thiserror::Error;
+
+use crate::{bounding_box::BoundingAabb3d, prelude::AgentOptions};
 
 /// A navigation mesh.
 pub struct PreNavigationMesh {
@@ -46,7 +48,7 @@ pub enum ValidationError {
     #[error("The edge made from vertices {0} and {1} is used by more than two polygons.")]
     DoublyConnectedEdge(usize, usize),
     #[error("There are no vertices in the polygon.")]
-    NoVertices
+    NoVertices,
 }
 
 impl PreNavigationMesh {
@@ -62,11 +64,13 @@ impl PreNavigationMesh {
             ));
         }
 
-        let Some(mesh_bounds) = Aabb::enclosing(self.vertices.iter()) else {
+        // TODO: remove clone
+        // build aabb
+        let Ok(mesh_bounds) = Aabb3d::from_points(self.vertices.iter().map(|v| v.clone())) else {
             return Err(ValidationError::NoVertices);
         };
-        let mut region_sets = DisjointSet::with_len(self.polygons.len());
 
+        // build connectivity
         enum ConnectivityState {
             Disconnected,
             Boundary {
@@ -80,8 +84,9 @@ impl PreNavigationMesh {
                 edge_2: usize,
             },
         }
-        let mut connectivity_set = HashMap::new();
 
+        let mut region_sets = DisjointSet::with_len(self.polygons.len());
+        let mut connectivity_set = HashMap::new();
         for (polygon_index, polygon) in self.polygons.iter().enumerate() {
             if polygon.len() < 3 {
                 return Err(ValidationError::NotEnoughVerticesInPolygon(polygon_index));
@@ -169,10 +174,10 @@ impl PreNavigationMesh {
             .enumerate()
             .map(|(polygon_index, polygon_vertices)| {
                 ValidPolygon {
-                    bounds: Aabb::enclosing(
+                    bounds: Aabb3d::from_points(
                         polygon_vertices.iter().map(|&vertex| self.vertices[vertex]),
                     )
-                    .expect("should have been at least 1 vertex"),
+                    .expect("Polygon must have at least one vertex"),
                     center: polygon_vertices
                         .iter()
                         .map(|i| self.vertices[*i])
@@ -254,7 +259,7 @@ impl PreNavigationMesh {
 pub struct NavigationMesh {
     /// The bounds of the mesh data itself. This is a tight bounding box around
     /// the vertices of the navigation mesh.
-    pub(crate) mesh_bounds: Aabb,
+    pub(crate) mesh_bounds: Aabb3d,
     /// The vertices that make up the polygons.
     pub(crate) vertices: Vec<Vec3>,
     /// The polygons of the mesh.
@@ -269,7 +274,6 @@ pub struct NavigationMesh {
     /// these don't correspond to [`crate::NodeType`]s yet. This occurs once
     /// assigned to an island.
     pub(crate) used_type_indices: HashSet<usize>,
-
     // /// The nav mesh data.
     // pub nav_mesh: Arc<ValidNavigationMesh>,
     // /// A map from the type indices used by [`Self::nav_mesh`] to the
@@ -277,6 +281,127 @@ pub struct NavigationMesh {
     // /// present in this map are implicitly assigned the "default" node type,
     // /// which always has a cost of 1.0.
     // pub type_index_to_node_type: HashMap<usize, NodeType>,
+}
+
+impl NavigationMesh {
+    /// Finds the node nearest to (and within `distance_to_node` of) `point`.
+    /// Returns the point on the nav mesh nearest to `point` and the index of the
+    /// polygon.
+    /// 
+    /// # Arguments
+    /// * `point` - The point to sample. This is in relative coordinates, so it should be
+    ///     transformed by the tile Global transform inverse before being passed in.
+    /// * `agent_options` - The options for the agent. This is used to determine
+    /// 
+    pub(crate) fn sample_point(
+        &self,
+        point: impl Into<Vec3A>, 
+        agent_options: &AgentOptions,
+    ) -> Option<(Vec3, usize)> {
+        let p: Vec3A = point.into();
+        let psd = &agent_options.point_sample_distance;
+        
+        let sample_padding = Aabb3d {
+            min: Vec3A::new(
+                -psd.horizontal_distance,
+                -psd.distance_below,
+                -psd.horizontal_distance,                
+            ),
+            max: Vec3A::new(
+                psd.horizontal_distance,
+                psd.distance_above,
+                psd.horizontal_distance,                
+            ),
+        };
+
+        // test if the point is within the bounds of the mesh
+        let mesh_expanded_bounds = Aabb3d {
+            min: self.mesh_bounds.min + sample_padding.min,
+            max: self.mesh_bounds.max + sample_padding.max,
+        };
+
+        if !mesh_expanded_bounds.contains_point(p){
+            return None;
+        }
+
+        let sample_box = Aabb3d {
+            min: p + sample_padding.min,
+            max: p + sample_padding.max,
+        };
+
+        fn project_to_triangle((v0, v1, v2): (Vec3, Vec3, Vec3), point: Vec3) -> Vec3 {
+            // edge deltas
+            let d0 = v1 - v0;
+            let d1 = v2 - v1;
+            let d2 = v0 - v2;
+            
+            // flatten to xz
+            let f0 = d0.xz();
+            let f1 = d1.xz();
+            let f2 = d2.xz();
+
+            // test each edge for outside‐region in XZ
+            let p0 = point.xz() - v0.xz();
+            if f0.perp_dot(p0) < 0.0 {
+                let s = (f0.dot(p0) / f0.length_squared()).clamp(0.0, 1.0);
+                return d0 * s + v0;
+            }
+            let p1 = point.xz() - v1.xz();
+            if f1.perp_dot(p1) < 0.0 {
+                let s = (f1.dot(p1) / f1.length_squared()).clamp(0.0, 1.0);
+                return d1 * s + v1;
+            }
+            let p2 = point.xz() - v2.xz();
+            if f2.perp_dot(p2) < 0.0 {
+                let s = (f2.dot(p2) / f2.length_squared()).clamp(0.0, 1.0);
+                return d2 * s + v2;
+            }
+
+            // inside triangle → project vertically along Y
+            let normal = -(d0.cross(d2)).normalize();
+            let h = normal.dot(point - v0) / normal.y;
+            Vec3::new(point.x, point.y - h, point.z)            
+        }
+
+        let mut best_node = None;
+
+        for (polygon_index, polygon) in self.polygons.iter().enumerate() {
+            if !sample_box.intersects(&polygon.bounds) {
+                continue;
+            }
+            for i in 2..polygon.vertices.len() {
+                let v0 = self.vertices[polygon.vertices[0]];
+                let v1 = self.vertices[polygon.vertices[i - 1]];
+                let v2 = self.vertices[polygon.vertices[i]];
+                    
+                let proj = project_to_triangle((v0, v1, v2), p.into());
+
+                // horizontal distance
+                let dh = p.xz().distance(proj.xz());
+                // vertical distance
+                let dv = proj.y - p.y;
+
+                if dh < psd.horizontal_distance
+                    && (-psd.distance_below..psd.distance_above)
+                        .contains(&dv)
+                {
+                    let score = dh
+                        * psd.vertical_preference_ratio
+                        + dv.abs();
+                    
+                    let better = best_node
+                        .as_ref()
+                        .map(|&(_, _, prev)| score < prev)
+                        .unwrap_or(true);
+                    if better {
+                        best_node = Some((polygon_index, proj, score));
+                    }
+                }
+            }
+        }
+
+        best_node.map(|(polygon_index, projected_point, _)| (projected_point, polygon_index))
+    }
 }
 
 // A navigation mesh which has been validated and derived data has been
@@ -465,7 +590,7 @@ pub(crate) struct ValidPolygon {
     /// once it is part of an island.
     pub(crate) type_index: usize,
     /// The bounding box of `vertices`.
-    pub(crate) bounds: Aabb,
+    pub(crate) bounds: Aabb3d,
     /// The center of the polygon.
     pub(crate) center: Vec3,
 }

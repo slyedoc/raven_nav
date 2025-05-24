@@ -1,7 +1,7 @@
 use bevy::{platform::collections::HashSet, prelude::*};
 
 use crate::{
-    archipelago::ArchipelagoTiles, build_contours, conversion::*,
+    archipelago::ArchipelagoTiles, build_contours, collider::*,
     create_nav_mesh_tile_from_poly_mesh, heightfields::*, mesher::build_poly_mesh,
     nav_mesh::NavigationMesh, prelude::Archipelago, regions::build_regions, tiles::NavMeshTile,
 };

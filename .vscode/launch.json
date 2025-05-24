@@ -60,6 +60,25 @@
             "args": [],
             "cwd": "${workspaceFolder}"
         },
+         {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'agent'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=agent",
+                    "--package=raven",
+                    "--features=debug_draw,bevy/wayland"
+                ],
+                "filter": {
+                    "name": "agent",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
         {
             "type": "lldb",
             "request": "launch",

@@ -98,26 +98,13 @@ pub struct Archipelago {
     pub experimental_detail_mesh_generation: Option<DetailMeshSettings>,
 
     // Navigation settings
-    /// The options for sampling agent and target points.
-    pub point_sample_distance: PointSampleDistance,
-    /// The distance that an agent will consider avoiding another agent.
-    pub neighbourhood: f32,
-    // The time into the future that collisions with other agents should be
-    /// avoided.
-    pub avoidance_time_horizon: f32,
-    /// The time into the future that collisions with obstacles should be
-    /// avoided.
-    pub obstacle_avoidance_time_horizon: f32,
-    /// The avoidance responsibility to use when an agent has reached its target.
-    /// A value of 1.0 is the default avoidance responsibility. A value of 0.0
-    /// would mean no avoidance responsibility, but a value of 0.0 is invalid and
-    /// may panic. This should be a value between 0.0 and 1.0.
-    pub reached_destination_avoidance_responsibility: f32,
+    pub agent_options: AgentOptions,
+
 }
 
 impl Archipelago {
     pub fn new(agent_radius: f32, agent_height: f32, size: Vec3) -> Self {
-        let cell_width = agent_radius / 2.0;
+        let cell_width =  0.42 ;// agent_radius / 2.0;
         let cell_height = agent_radius / 4.0;
 
         let walkable_height = (agent_height / cell_height) as u16;
@@ -140,15 +127,17 @@ impl Archipelago {
             experimental_detail_mesh_generation: None,
 
             // Navigation settings
-            neighbourhood: 10.0 * agent_radius,
-            avoidance_time_horizon: 1.0,
-            obstacle_avoidance_time_horizon: 0.5,
-            reached_destination_avoidance_responsibility: 0.1,
-            point_sample_distance: PointSampleDistance {
-                horizontal_distance: 0.2 * agent_radius,
-                distance_above: 0.5 * agent_radius,
-                distance_below: agent_radius,
-                vertical_preference_ratio: 2.0,
+            agent_options: AgentOptions {
+                neighbourhood: 10.0 * agent_radius,
+                avoidance_time_horizon: 1.0,
+                obstacle_avoidance_time_horizon: 0.5,
+                reached_destination_avoidance_responsibility: 0.1,
+                point_sample_distance: PointSampleDistance {
+                    horizontal_distance: 0.2 * agent_radius,
+                    distance_above: 2.0, // 0.5 * agent_radius,
+                    distance_below: 0.5, // agent_radius,
+                    vertical_preference_ratio: 2.0,
+                }
             },
         }
     }
@@ -366,6 +355,26 @@ pub struct NavMeshGenerationJob {
     pub entity: Entity,
     // pub generation: u64,
     pub task: Task<NavMeshTile>,
+}
+
+#[derive(Clone, Reflect, Debug)]
+pub struct AgentOptions {
+    // Navigation settings
+    /// The options for sampling agent and target points.
+    pub point_sample_distance: PointSampleDistance,
+    /// The distance that an agent will consider avoiding another agent.
+    pub neighbourhood: f32,
+    // The time into the future that collisions with other agents should be
+    /// avoided.
+    pub avoidance_time_horizon: f32,
+    /// The time into the future that collisions with obstacles should be
+    /// avoided.
+    pub obstacle_avoidance_time_horizon: f32,
+    /// The avoidance responsibility to use when an agent has reached its target.
+    /// A value of 1.0 is the default avoidance responsibility. A value of 0.0
+    /// would mean no avoidance responsibility, but a value of 0.0 is invalid and
+    /// may panic. This should be a value between 0.0 and 1.0.
+    pub reached_destination_avoidance_responsibility: f32,
 }
 
 #[derive(Clone, Reflect, Debug)]

@@ -1,15 +1,10 @@
-use std::{cmp::Ordering, ops::Div, sync::Arc};
+use std::{cmp::Ordering, ops::Div};
 
-use avian3d::parry::{
-    bounding_volume::Aabb,
-    math::Isometry,
-    na::Point3,
-    shape::HeightField,
-};
+use avian3d::parry::{bounding_volume::Aabb, math::Isometry, na::Point3};
 use bevy::{math::Vec3A, prelude::*};
 use smallvec::SmallVec;
 
-use crate::{Area, archipelago::Archipelago, conversion::Triangles};
+use crate::{Area, archipelago::Archipelago, collider::*};
 
 use super::get_neighbour_index;
 
@@ -57,24 +52,13 @@ pub struct OpenTile {
     pub(super) max_regions: u16,
 }
 
-pub(super) struct TriangleCollection {
-    pub(super) transform: GlobalTransform,
-    pub(super) triangles: Triangles,
-    pub(super) area: Option<Area>,
-}
 
-pub struct HeightFieldCollection {
-    pub transform: GlobalTransform,
-    pub heightfield: Arc<HeightField>, //
-    pub area: Option<Area>,
-}
 
 pub(super) fn build_heightfield_tile(
     config: &Archipelago,
     triangle_collections: Vec<TriangleCollection>,
     heightfields: Vec<HeightFieldCollection>,
 ) -> VoxelizedTile {
-
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::build_heightfield_tile").entered();
 
@@ -100,8 +84,9 @@ pub(super) fn build_heightfield_tile(
 
         match triangles {
             Triangles::Triangle(vertices) => {
-                let v = vertices
-                    .map(|vertex| transform.affine().transform_point3a(Vec3A::from(vertex)) - tile_min_bound);
+                let v = vertices.map(|vertex| {
+                    transform.affine().transform_point3a(Vec3A::from(vertex)) - tile_min_bound
+                });
                 process_triangle(
                     v[0],
                     v[1],
@@ -116,10 +101,12 @@ pub(super) fn build_heightfield_tile(
             Triangles::TriMesh(vertices, triangles) => {
                 let v = vertices
                     .iter()
-                    .map(|vertex| transform.affine().transform_point3a(Vec3A::from(*vertex)) - tile_min_bound)
+                    .map(|vertex| {
+                        transform.affine().transform_point3a(Vec3A::from(*vertex)) - tile_min_bound
+                    })
                     .collect::<Vec<_>>();
 
-                for triangle in triangles.iter() {                    
+                for triangle in triangles.iter() {
                     process_triangle(
                         v[triangle[0] as usize],
                         v[triangle[1] as usize],
@@ -180,12 +167,13 @@ pub(super) fn build_heightfield_tile(
 #[cfg(test)]
 
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use test::Bencher;
 
     #[test]
     fn test_build_heightfield_tile() {
-
         // build heightfield
         let resolution = 250;
         let oct = 10.0;

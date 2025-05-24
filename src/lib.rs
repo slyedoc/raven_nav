@@ -1,39 +1,37 @@
 #![feature(test)]
 extern crate test;
 
-use std::sync::Arc;
-
-use agent::{Agent, AgentArchipelago, AgentSettings};
-use archipelago::Archipelago;
-use bounding_box::Bounding;
-use character::{Character, CharacterArchipelago};
-use collider::{GeometryResult, get_geometry_type};
-use contour::build_contours;
-use conversion::GeometryCollection;
-use heightfields::HeightFieldCollection;
-
 mod agent;
-mod collider;
-use collider::*;
 mod archipelago;
+mod bounding_box;
+mod character;
+mod collider;
 mod contour;
-mod conversion;
 #[cfg(feature = "debug_draw")]
 pub mod debug_draw;
 mod detail_mesh;
 mod heightfields;
 mod math;
 mod mesher;
-mod regions;
-mod tiles;
-use archipelago::*;
-mod character;
-use character::*;
-mod tile;
-use tile::*;
 mod nav_mesh;
+mod navigation;
+mod regions;
+mod tile;
+mod tiles;
+
+
+use agent::*;
+use archipelago::*;
+use bounding_box::Bounding;
+use character::*;
+use collider::*;
+use contour::build_contours;
 use nav_mesh::*;
-mod bounding_box;
+use navigation::*;
+use tile::*;
+
+use std::sync::Arc;
+
 
 use avian3d::{
     parry::{math::Isometry, na::Vector3, shape::HeightField},
@@ -61,22 +59,28 @@ pub struct RavenPlugin;
 
 impl Plugin for RavenPlugin {
     fn build(&self, app: &mut App) {
-        app.init_asset::<NavigationMesh>()            
+        app.init_asset::<NavigationMesh>()
+            .init_resource::<PathingResults>()
             .add_systems(
                 Update,
                 (
                     archipelago_changed,
-                    handle_removed_affectors,
+                    handle_removed_affectors, //.in_set(OxidizedNavigation::Main),
+                    update_tile_build_tasks,
                 )
-                    .chain(), //.in_set(OxidizedNavigation::Main),
+                    .chain(),
             )
-            .add_systems(PostUpdate, 
+            .add_systems(
+                PostUpdate,
                 (
                     update_navmesh_affectors,
                     //(add_agents_to_archipelago, add_characters_to_archipelago),
                     start_tile_build_tasks,
-                    update_tile_build_tasks
-                ).after(TransformSystem::TransformPropagate)
+                    update_tile_build_tasks,
+                    navigation::update_navigation,
+                )
+                    .chain()
+                    .after(TransformSystem::TransformPropagate),
             )
             .register_type::<Agent>()
             .register_type::<AgentSettings>()
@@ -85,7 +89,7 @@ impl Plugin for RavenPlugin {
             .register_type::<CharacterSettings>()
             .register_type::<CharacterArchipelago>()
             .register_type::<TileAffectors>()
-            .register_type::<Tile>()            
+            .register_type::<Tile>()
             .register_type::<Handle<NavigationMesh>>()
             .register_type::<TileNavMesh>()
             .register_type::<Archipelago>()
@@ -125,6 +129,7 @@ fn add_characters_to_archipelago(
     }
 }
 
+///
 fn archipelago_changed(
     mut commands: Commands,
     mut query: Query<
@@ -170,7 +175,8 @@ fn archipelago_changed(
             while x_f < arch.world_half_extents.x {
                 let tile = UVec2::new(x_i, z_i);
                 let translation = Vec3::new(x_f + half_tile_size, 0., z_f + half_tile_size);
-                let tile_half_extends = Vec3::new(half_tile_size, arch.world_half_extents.y, half_tile_size);
+                let tile_half_extends =
+                    Vec3::new(half_tile_size, arch.world_half_extents.y, half_tile_size);
 
                 let tile_id = commands
                     .spawn((
@@ -381,7 +387,7 @@ fn start_tile_build_tasks(
             // Step 2: Clear any build tasks for this tile
             active_generation_tasks.retain(|job| job.entity != *tile_enity);
 
-            // Step 3: Start Build Task.            
+            // Step 3: Start Build Task.
             active_generation_tasks.0.push(NavMeshGenerationJob {
                 entity: *tile_enity,
                 //generation: tile_generation.0,
@@ -399,7 +405,7 @@ fn start_tile_build_tasks(
 /// Checks status of tile builds
 fn update_tile_build_tasks(
     mut commands: Commands,
-    mut archipelago_query: Query<&mut ActiveGenerationTasks, With<Archipelago>>,    
+    mut archipelago_query: Query<&mut ActiveGenerationTasks, With<Archipelago>>,
     mut nav_meshes: ResMut<Assets<NavigationMesh>>,
 ) {
     for mut tasks in archipelago_query.iter_mut() {
@@ -456,64 +462,7 @@ fn handle_removed_affectors(
     removed.clear();
 }
 
-/// Handle the geometry result and add it to the appropriate collections.
-fn handle_geometry_result(
-    type_to_convert: GeometryResult,
-    entity: Entity,
-    collider_transform: GlobalTransform,
-    area: Option<Area>,
-    geometry_collections: &mut Vec<GeometryCollection>,
-    heightfield_collections: &mut Vec<HeightFieldCollection>,
-    entity_heightfield_map: &mut EntityHashMap<Arc<HeightField>>,
-) {
-    match type_to_convert {
-        GeometryResult::GeometryToConvert(geometry_to_convert) => {
-            geometry_collections.push(GeometryCollection {
-                transform: collider_transform,
-                geometry_to_convert,
-                area,
-            });
-        }
-        GeometryResult::Heightfield(heightfield) => {
-            // Don't Duplicate heightfields.
-            let heightfield = if let Some(heightfield_arc) = entity_heightfield_map.get(&entity) {
-                HeightFieldCollection {
-                    transform: collider_transform,
-                    heightfield: heightfield_arc.clone(),
-                    area,
-                }
-            } else {
-                let height_field_arc = Arc::new(heightfield.clone());
-                entity_heightfield_map.insert(entity, height_field_arc.clone());
-                HeightFieldCollection {
-                    transform: collider_transform,
-                    heightfield: height_field_arc,
-                    area,
-                }
-            };
-            heightfield_collections.push(heightfield);
-        }
-        GeometryResult::Compound(results) => {
-            for (isometry, result) in results {
-                // TODO: not sure this is correct, havent tested compound yet
-                let (trans, rot) = isometry.into();
-                let local_trans =
-                    GlobalTransform::from(Transform::from_translation(trans).with_rotation(rot));
 
-                handle_geometry_result(
-                    result,
-                    entity,
-                    local_trans * collider_transform,
-                    area,
-                    geometry_collections,
-                    heightfield_collections,
-                    entity_heightfield_map,
-                );
-            }
-        }
-        GeometryResult::Unsupported => {}
-    }
-}
 
 fn get_neighbour_index(tile_size: usize, index: usize, dir: usize) -> usize {
     match dir {
