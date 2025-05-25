@@ -3,10 +3,32 @@ name = "raven"
 version = "0.1.0"
 edition = "2024"
 
+# Enable a small amount of optimization in the dev profile.
+[profile.dev]
+opt-level = 1
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+
+[profile.server-dev]
+inherits = "dev"
+
+[profile.android-dev]
+inherits = "dev"
+
+# Enable a large amount of optimization in the dev profile for dependencies.
+# [profile.dev.package."*"]
+# opt-level = 3
+
+
 [features]
 default = [ 
-    #"bevy/wayland" # TODO: remove before making public
+    "hot",
+    "bevy/wayland",
+    "bevy/dynamic_linking",    
 ] 
+hot = []
 debug_draw = [
     "bevy/bevy_gizmos",
     "bevy/bevy_render",    
@@ -23,13 +45,16 @@ smallvec = { version = "1.11", default-features = false }
 thiserror = "1.0"
 disjoint = "0.8.0"
 bevy-inspector-egui = { version = "0.31" }
+bevy_simple_subsecond_system = { git = "https://github.com/TheBevyFlock/bevy_simple_subsecond_system", version = "0.2.0" }
 
+ 
 [dev-dependencies]
 bevy = "0.16"
 avian3d = "0.3"
 bevy_enhanced_input = "0.11"
 #sly_editor = { git = "https://github.com/slyedoc/sly_editor.git", features = ["avian3d"]}
 sly_editor = { path = "../sly_editor", features = ["avian3d"]}
+log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 
 [[example]]
 name = "simple"

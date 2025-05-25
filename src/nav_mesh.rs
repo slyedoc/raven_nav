@@ -1,16 +1,24 @@
-use std::{cmp::Ordering};
-
+#[cfg(feature = "debug_draw")]
+use crate::debug_draw::aabb3d_transform;
+#[cfg(feature = "debug_draw")]
+use bevy::color::palettes::tailwind;
 use bevy::{
-    math::bounding::{Aabb3d, IntersectsVolume},
+    math::bounding::{Aabb3d, BoundingVolume, IntersectsVolume},
     platform::collections::{HashMap, HashSet},
     prelude::*,
 };
 use disjoint::DisjointSet;
+use std::cmp::Ordering;
 use thiserror::Error;
 
-use crate::{bounding_box::BoundingAabb3d, prelude::AgentOptions};
+use crate::{
+    AgentOptions,
+    bounding_box::{Bounding, BoundingAabb3d},
+};
 
 /// A navigation mesh.
+///
+#[derive(Clone)]
 pub struct PreNavigationMesh {
     /// The vertices that make up the polygons.
     pub vertices: Vec<Vec3>,
@@ -283,112 +291,113 @@ pub struct NavigationMesh {
     // pub type_index_to_node_type: HashMap<usize, NodeType>,
 }
 
+pub struct SampleResult {
+    projected_point: Vec3,
+    polygon_index: usize,
+}
 impl NavigationMesh {
     /// Finds the node nearest to (and within `distance_to_node` of) `point`.
     /// Returns the point on the nav mesh nearest to `point` and the index of the
     /// polygon.
-    /// 
+    ///
     /// # Arguments
     /// * `point` - The point to sample. This is in relative coordinates, so it should be
     ///     transformed by the tile Global transform inverse before being passed in.
     /// * `agent_options` - The options for the agent. This is used to determine
-    /// 
+    ///
+    ///
+
     pub(crate) fn sample_point(
         &self,
-        point: impl Into<Vec3A>, 
+        world_point: impl Into<Vec3A>,
+        transform: &GlobalTransform,
+        tile_bounding: &Bounding,
         agent_options: &AgentOptions,
+        #[cfg(feature = "debug_draw")] gizmos: &mut Gizmos<crate::debug_draw::RavenGizmos>,
     ) -> Option<(Vec3, usize)> {
-        let p: Vec3A = point.into();
-        let psd = &agent_options.point_sample_distance;
-        
-        let sample_padding = Aabb3d {
-            min: Vec3A::new(
-                -psd.horizontal_distance,
-                -psd.distance_below,
-                -psd.horizontal_distance,                
-            ),
-            max: Vec3A::new(
-                psd.horizontal_distance,
-                psd.distance_above,
-                psd.horizontal_distance,                
-            ),
-        };
+        let point: Vec3A = world_point.into();
+        let p = transform.affine().inverse().transform_point3a(point);
+        let tile_contains = tile_bounding.contains_point(p);
 
-        // test if the point is within the bounds of the mesh
-        let mesh_expanded_bounds = Aabb3d {
-            min: self.mesh_bounds.min + sample_padding.min,
-            max: self.mesh_bounds.max + sample_padding.max,
-        };
+        if tile_contains {
+            #[cfg(feature = "debug_draw")]
+            gizmos.cuboid(
+                aabb3d_transform(tile_bounding, transform),
+                tailwind::GREEN_600,
+            );
+        } else {
+            // Could out here, but would effect the boarders
+            // return None;
+        }
 
-        if !mesh_expanded_bounds.contains_point(p){
+        let sample_aabb = agent_options.point_sample_distance.aabb();
+        // see if mesh bounds plus sample_aabb intersects
+        let mesh_contains_aabb = Aabb3d {
+            min: self.mesh_bounds.min + sample_aabb.min,
+            max: self.mesh_bounds.max + sample_aabb.max,
+        };
+        let mesh_contains = mesh_contains_aabb.contains_point(p);
+        if mesh_contains {
+            #[cfg(feature = "debug_draw")]
+            gizmos.cuboid(
+                aabb3d_transform(&mesh_contains_aabb, transform),
+                tailwind::BLUE_600,
+            );
+        } else {
             return None;
         }
 
-        let sample_box = Aabb3d {
-            min: p + sample_padding.min,
-            max: p + sample_padding.max,
+        // test if point + sample_aabb intersects any polygon
+        let sample_aabb_reversed = agent_options.point_sample_distance.aabb_reversed();
+        let point_sample_aabb = Aabb3d {
+            min: p + sample_aabb_reversed.min,
+            max: p + sample_aabb_reversed.max,
         };
 
-        fn project_to_triangle((v0, v1, v2): (Vec3, Vec3, Vec3), point: Vec3) -> Vec3 {
-            // edge deltas
-            let d0 = v1 - v0;
-            let d1 = v2 - v1;
-            let d2 = v0 - v2;
-            
-            // flatten to xz
-            let f0 = d0.xz();
-            let f1 = d1.xz();
-            let f2 = d2.xz();
-
-            // test each edge for outside‐region in XZ
-            let p0 = point.xz() - v0.xz();
-            if f0.perp_dot(p0) < 0.0 {
-                let s = (f0.dot(p0) / f0.length_squared()).clamp(0.0, 1.0);
-                return d0 * s + v0;
-            }
-            let p1 = point.xz() - v1.xz();
-            if f1.perp_dot(p1) < 0.0 {
-                let s = (f1.dot(p1) / f1.length_squared()).clamp(0.0, 1.0);
-                return d1 * s + v1;
-            }
-            let p2 = point.xz() - v2.xz();
-            if f2.perp_dot(p2) < 0.0 {
-                let s = (f2.dot(p2) / f2.length_squared()).clamp(0.0, 1.0);
-                return d2 * s + v2;
-            }
-
-            // inside triangle → project vertically along Y
-            let normal = -(d0.cross(d2)).normalize();
-            let h = normal.dot(point - v0) / normal.y;
-            Vec3::new(point.x, point.y - h, point.z)            
-        }
-
+        #[cfg(feature = "debug_draw")]
         let mut best_node = None;
 
         for (polygon_index, polygon) in self.polygons.iter().enumerate() {
-            if !sample_box.intersects(&polygon.bounds) {
+            let poly_contains = point_sample_aabb.intersects(&polygon.bounds);
+
+            if !poly_contains {
                 continue;
             }
+            gizmos.cuboid(
+                aabb3d_transform(&polygon.bounds.grow(Vec3A::Y * 0.1), transform),
+                match poly_contains {
+                    true => tailwind::YELLOW_500,
+                    false => tailwind::RED_500,
+                },
+            );
+            gizmos.cuboid(
+                aabb3d_transform(&point_sample_aabb, transform),
+                tailwind::GREEN_500,
+            );
             for i in 2..polygon.vertices.len() {
                 let v0 = self.vertices[polygon.vertices[0]];
                 let v1 = self.vertices[polygon.vertices[i - 1]];
                 let v2 = self.vertices[polygon.vertices[i]];
-                    
-                let proj = project_to_triangle((v0, v1, v2), p.into());
+
+                let proj = project_point_to_triangle(p.into(), v0, v1, v2);
 
                 // horizontal distance
                 let dh = p.xz().distance(proj.xz());
                 // vertical distance
                 let dv = proj.y - p.y;
-
-                if dh < psd.horizontal_distance
-                    && (-psd.distance_below..psd.distance_above)
+            
+                if dh < agent_options.point_sample_distance.horizontal_distance
+                    && (-agent_options.point_sample_distance.distance_below
+                        ..agent_options.point_sample_distance.distance_above)
                         .contains(&dv)
                 {
                     let score = dh
-                        * psd.vertical_preference_ratio
+                        * agent_options
+                            .point_sample_distance
+                            .vertical_preference_ratio
                         + dv.abs();
-                    
+
+                    dbg!("Score", proj, dh, dv);
                     let better = best_node
                         .as_ref()
                         .map(|&(_, _, prev)| score < prev)
@@ -396,159 +405,68 @@ impl NavigationMesh {
                     if better {
                         best_node = Some((polygon_index, proj, score));
                     }
+                } else {
+                    //dbg!("Miss", polygon_index, dh, dv);
                 }
             }
         }
+        if best_node.is_none() {
+            dbg!("No Best");
+        }
 
-        best_node.map(|(polygon_index, projected_point, _)| (projected_point, polygon_index))
+        best_node.map(|(polygon_index, projected_point, _)| {
+            (transform.transform_point(projected_point), polygon_index)
+        })
     }
 }
 
-// A navigation mesh which has been validated and derived data has been
-/// computed.
-// pub struct ValidNavigationMesh {
+fn project_point_to_triangle(point: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Vec3 {
+    // define the triangle edges
+    let e0 = b - a;
+    let e1 = c - b;
+    let e2 = a - c;
 
-// }
+    // grab the xz components of the triangle edges for 2D test, "flattening" the triangle
+    let f0 = e0.xz();
+    let f1 = e1.xz();
+    let f2 = e2.xz();
 
-// impl ValidNavigationMesh {
-//     /// Returns the bounds of the navigation mesh.
-//     pub(crate) fn get_bounds(&self) -> BoundingBox {
-//         self.mesh_bounds
-//     }
+    // for each edge we ask "is the point's XY projection outside the half-plane defined by this edge?"
+    if let Some(value) = project_to_edge(a, point, e0, f0) {
+        return value;
+    }
+    if let Some(value) = project_to_edge(b, point, e1, f1) {
+        return value;
+    }
+    if let Some(value) = project_to_edge(c, point, e2, f2) {
+        return value;
+    }
 
-//     // Gets the points that make up the specified edge.
-//     pub(crate) fn get_edge_points(&self, edge_ref: MeshEdgeRef) -> (Vec3, Vec3) {
-//         let polygon = &self.polygons[edge_ref.polygon_index];
-//         let left_vertex_index = polygon.vertices[edge_ref.edge_index];
+    // Inside triangle → project vertically along Y
+    let normal = -(e0.cross(e2)).normalize();
+    let h = normal.dot(point - a) / normal.z;
+    Vec3::new(point.x, point.y - h, point.z)
+}
 
-//         let right_vertex_index = if edge_ref.edge_index == polygon.vertices.len() - 1 {
-//             0
-//         } else {
-//             edge_ref.edge_index + 1
-//         };
-//         let right_vertex_index = polygon.vertices[right_vertex_index];
+#[inline]
+// is the point's XY projection outside the half-plane defined by this edge
+fn project_to_edge(vertex: Vec3, point: Vec3, edge: Vec3, edge2d: Vec2) -> Option<Vec3> {
+    // grab the point projection relative to the vertex
+    let p0 = point.xz() - vertex.xz();
+    // is the point’s XY projection outside the half-plane defined by this edge?
+    // if it’s negative, the point lies “to the right” of that edge’s outward normal → outside.
+    if edge2d.perp_dot(p0) < 0.0 {
+        // if so, we compute the closest point on that edge segment by
+        let s = (edge2d.dot(p0) / edge2d.length_squared()).clamp(0.0, 1.0);
+        // Then lift back into 3D along the original (non-flat) edge:
+        return Some(edge * s + vertex);
+    }
+    None
+}
 
-//         (
-//             self.vertices[left_vertex_index],
-//             self.vertices[right_vertex_index],
-//         )
-//     }
-
-//     /// Finds the node nearest to (and within `distance_to_node` of) `point`.
-//     /// Returns the point on the nav mesh nearest to `point` and the index of the
-//     /// polygon.
-//     pub(crate) fn sample_point(
-//         &self,
-//         point: Vec3,
-//         point_sample_distance: &PointSampleDistance,
-//     ) -> Option<(Vec3, usize)> {
-//         let sample_box = BoundingBox::new_box(
-//             point
-//                 + Vec3::new(
-//                     -point_sample_distance.horizontal_distance,
-//                     -point_sample_distance.horizontal_distance,
-//                     -point_sample_distance.distance_below,
-//                 ),
-//             point
-//                 + Vec3::new(
-//                     point_sample_distance.horizontal_distance,
-//                     point_sample_distance.horizontal_distance,
-//                     point_sample_distance.distance_above,
-//                 ),
-//         );
-
-//         fn project_to_triangle(triangle: (Vec3, Vec3, Vec3), point: Vec3) -> Vec3 {
-//             let triangle_deltas = (
-//                 triangle.1 - triangle.0,
-//                 triangle.2 - triangle.1,
-//                 triangle.0 - triangle.2,
-//             );
-//             let triangle_deltas_flat = (
-//                 triangle_deltas.0.xy(),
-//                 triangle_deltas.1.xy(),
-//                 triangle_deltas.2.xy(),
-//             );
-
-//             if triangle_deltas_flat
-//                 .0
-//                 .perp_dot(point.xy() - triangle.0.xy())
-//                 < 0.0
-//             {
-//                 let s = triangle_deltas_flat.0.dot(point.xy() - triangle.0.xy())
-//                     / triangle_deltas_flat.0.length_squared();
-//                 return triangle_deltas.0 * s.clamp(0.0, 1.0) + triangle.0;
-//             }
-//             if triangle_deltas_flat
-//                 .1
-//                 .perp_dot(point.xy() - triangle.1.xy())
-//                 < 0.0
-//             {
-//                 let s = triangle_deltas_flat.1.dot(point.xy() - triangle.1.xy())
-//                     / triangle_deltas_flat.1.length_squared();
-//                 return triangle_deltas.1 * s.clamp(0.0, 1.0) + triangle.1;
-//             }
-//             if triangle_deltas_flat
-//                 .2
-//                 .perp_dot(point.xy() - triangle.2.xy())
-//                 < 0.0
-//             {
-//                 let s = triangle_deltas_flat.2.dot(point.xy() - triangle.2.xy())
-//                     / triangle_deltas_flat.2.length_squared();
-//                 return triangle_deltas.2 * s.clamp(0.0, 1.0) + triangle.2;
-//             }
-
-//             let normal = -triangle_deltas.0.cross(triangle_deltas.2).normalize();
-//             let height = normal.dot(point - triangle.0) / normal.z;
-//             Vec3::new(point.x, point.y, point.z - height)
-//         }
-
-//         let mut best_node = None;
-
-//         for (polygon_index, polygon) in self.polygons.iter().enumerate() {
-//             if !sample_box.intersects_bounds(&polygon.bounds) {
-//                 continue;
-//             }
-//             for i in 2..polygon.vertices.len() {
-//                 let triangle = (
-//                     polygon.vertices[0],
-//                     polygon.vertices[i - 1],
-//                     polygon.vertices[i],
-//                 );
-//                 let triangle = (
-//                     self.vertices[triangle.0],
-//                     self.vertices[triangle.1],
-//                     self.vertices[triangle.2],
-//                 );
-//                 let projected_point = project_to_triangle(triangle, point);
-
-//                 let distance_to_triangle_horizontal = point.xy().distance(projected_point.xy());
-//                 let distance_to_triangle_vertical = projected_point.z - point.z;
-//                 if distance_to_triangle_horizontal < point_sample_distance.horizontal_distance
-//                     && (-point_sample_distance.distance_below..point_sample_distance.distance_above)
-//                         .contains(&distance_to_triangle_vertical)
-//                 {
-//                     let distance_to_triangle = distance_to_triangle_horizontal
-//                         * point_sample_distance.vertical_preference_ratio
-//                         + distance_to_triangle_vertical.abs();
-//                     let replace = match best_node {
-//                         None => true,
-//                         Some((_, _, previous_best_distance))
-//                             if distance_to_triangle < previous_best_distance =>
-//                         {
-//                             true
-//                         }
-//                         _ => false,
-//                     };
-//                     if replace {
-//                         best_node = Some((polygon_index, projected_point, distance_to_triangle));
-//                     }
-//                 }
-//             }
-//         }
-
-//         best_node.map(|(polygon_index, projected_point, _)| (projected_point, polygon_index))
-//     }
-// }
+#[cfg(test)]
+#[path = "nav_mesh_test.rs"]
+mod test;
 
 /// A reference to an edge on a navigation mesh.
 #[derive(PartialEq, Eq, Debug, Clone, Hash, Default, Reflect)]
@@ -570,8 +488,8 @@ pub(crate) struct Connectivity {
     pub(crate) travel_distances: (f32, f32),
 }
 
-#[derive(Debug, Reflect)]
-#[allow(dead_code)]
+#[derive(Debug, Reflect, Clone, PartialEq)]
+
 pub(crate) struct ValidPolygon {
     /// The vertices are indexes to the `vertices` Vec of the corresponding
     /// ValidNavigationMesh.

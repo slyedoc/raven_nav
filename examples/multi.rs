@@ -2,7 +2,7 @@ mod common; // helper functions
 use common::*;
 
 use avian3d::prelude::*;
-use bevy::{input::common_conditions::input_just_pressed, prelude::*};
+use bevy::prelude::*;
 use raven::prelude::*;
 use sly_editor::IsEditorCamera;
 
@@ -15,18 +15,13 @@ fn main() {
                     ..default()
                 }),
                 ..default()
-            }),
-            ExampleCommonPlugin,
-            // physics
+            }),            
             PhysicsPlugins::default(),
             RavenPlugin,
             RavenDebugPlugin::default(),
+            ExampleCommonPlugin,
         ))
         .add_systems(Startup, setup)
-        .add_systems(
-            Update,
-            toggle_nav_mesh_debug_draw.run_if(input_just_pressed(KeyCode::KeyM)),
-        )
         .run();
 }
 
@@ -128,10 +123,4 @@ fn generate_area(
         RigidBody::Static,
         NavMeshAffector::default(), // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
     ));
-}
-
-fn toggle_nav_mesh_debug_draw(mut store: ResMut<GizmoConfigStore>) {
-    let config = store.config_mut::<RavenGizmos>().0;
-    config.enabled = !config.enabled;
-    println!("NavMesh debug draw: {}", config.enabled);
 }

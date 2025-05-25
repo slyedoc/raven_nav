@@ -1,7 +1,8 @@
 use bevy::{math::bounding::{Aabb3d}, prelude::*};
 
-#[derive(Component, Clone, Debug, Deref, DerefMut)]
-pub(crate) struct Bounding(pub Aabb3d);
+#[derive(Component, Clone, Debug, Deref, DerefMut, Reflect)]
+#[reflect(Component)]
+pub struct Bounding(pub Aabb3d);
 
 
 pub trait BoundingAabb3d {
@@ -39,7 +40,7 @@ impl BoundingAabb3d for Aabb3d {
 #[test]
 fn test_contains_point() {
     let aabb = Aabb3d {
-        min: Vec3A::new(-9., 2.0, -9.55),
+        min: Vec3A::new(-9., -2.0, -9.55),
         max: Vec3A::new(9.0, 0.5, 9.34),
     };
     assert_eq!(aabb.contains_point(Vec3A::new(0.0, 0.0, 0.0)), true);

@@ -1,7 +1,7 @@
 use bevy::{
     color::palettes::tailwind,
-    gizmos::{AppGizmoBuilder, config::GizmoConfigGroup},
-    math::bounding::BoundingVolume,
+    gizmos::{config::GizmoConfigGroup, AppGizmoBuilder},
+    math::bounding::{Aabb3d, BoundingVolume},
     prelude::*,
     reflect::Reflect,
     render::view::RenderLayers,
@@ -34,7 +34,6 @@ impl Plugin for RavenDebugPlugin {
                 draw_tiles,
                 //draw_path.run_if(any_with_component::<DrawPath>),
             )
-                //.after(PhysicsSet::StepSimulation)
                 .run_if(|store: Res<GizmoConfigStore>| store.config::<RavenGizmos>().0.enabled),
         );
     }
@@ -52,7 +51,7 @@ impl Default for RavenGizmos {
     fn default() -> Self {
         Self {
             archipelago_bounds: Some(tailwind::GRAY_300.with_alpha(0.5).into()),
-            tile_bounds: Some(tailwind::RED_600.with_alpha(0.5).into()),
+            tile_bounds: None, // Some(tailwind::RED_600.with_alpha(0.5).into()),
             tile_polygons: Some(tailwind::GREEN_500.into()),
             tile_edges: Some(tailwind::BLUE_500.into()),
         }
@@ -87,7 +86,7 @@ fn draw_arhipelago_bounds(
     let config = store.config::<RavenGizmos>().1;
     if let Some(color) = config.archipelago_bounds {
         for (&trans, bounding) in archipelago_query.iter() {
-            gizmos.cuboid(bounding_transform(&bounding, &trans), color);
+            gizmos.cuboid(aabb3d_transform(&bounding.0, &trans), color);
         }
     }
 }
@@ -100,7 +99,7 @@ fn draw_tile_bounds(
     let config = store.config::<RavenGizmos>().1;
     if let Some(color) = config.tile_bounds {
         for (trans, bounding) in island_query.iter() {
-            gizmos.cuboid(bounding_transform(&bounding, trans), color);
+            gizmos.cuboid(aabb3d_transform(&bounding.0, trans), color);
         }
     }
 }
@@ -196,11 +195,11 @@ fn draw_tiles(
     }
 }
 
-fn bounding_transform(bounding: &Bounding, transform: &GlobalTransform) -> GlobalTransform {
+pub fn aabb3d_transform(bounding: &Aabb3d, transform: &GlobalTransform) -> GlobalTransform {
     *transform
         * GlobalTransform::from(
-            Transform::from_translation(bounding.0.center().into())
-                .with_scale((bounding.0.max - bounding.0.min).into()),
+            Transform::from_translation(bounding.center().into())
+                .with_scale((bounding.max - bounding.min).into()),
         )
 }
 

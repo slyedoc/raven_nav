@@ -1,6 +1,9 @@
 #![feature(test)]
 extern crate test;
 
+#[cfg(feature = "hot")]
+use bevy_simple_subsecond_system::prelude::*;
+
 mod agent;
 mod archipelago;
 mod bounding_box;
@@ -22,6 +25,7 @@ mod tiles;
 
 use agent::*;
 use archipelago::*;
+
 use bounding_box::Bounding;
 use character::*;
 use collider::*;
@@ -38,11 +42,7 @@ use avian3d::{
     prelude::*,
 };
 use bevy::{
-    ecs::entity::EntityHashMap,
-    math::bounding::Aabb3d,
-    platform::collections::HashSet,
-    prelude::*,
-    tasks::{AsyncComputeTaskPool, futures_lite::future},
+    ecs::entity::EntityHashMap, input::common_conditions::*, math::bounding::Aabb3d, platform::collections::HashSet, prelude::*, tasks::{futures_lite::future, AsyncComputeTaskPool}
 };
 use tiles::{NavMeshTile, create_nav_mesh_tile_from_poly_mesh};
 
@@ -59,6 +59,11 @@ pub struct RavenPlugin;
 
 impl Plugin for RavenPlugin {
     fn build(&self, app: &mut App) {
+
+        #[cfg(feature = "hot")]
+        app.add_plugins(SimpleSubsecondPlugin::default());
+        
+        
         app.init_asset::<NavigationMesh>()
             .init_resource::<PathingResults>()
             .add_systems(
@@ -77,7 +82,7 @@ impl Plugin for RavenPlugin {
                     //(add_agents_to_archipelago, add_characters_to_archipelago),
                     start_tile_build_tasks,
                     update_tile_build_tasks,
-                    navigation::update_navigation,
+                    navigation::update_navigation.run_if(input_pressed(KeyCode::Space)),
                 )
                     .chain()
                     .after(TransformSystem::TransformPropagate),
@@ -91,6 +96,7 @@ impl Plugin for RavenPlugin {
             .register_type::<TileAffectors>()
             .register_type::<Tile>()
             .register_type::<Handle<NavigationMesh>>()
+            .register_type::<Bounding>()
             .register_type::<TileNavMesh>()
             .register_type::<Archipelago>()
             .register_type::<archipelago::TileLookup>()

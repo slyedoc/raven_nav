@@ -1,93 +1,144 @@
-use core::arch;
+use std::time::Instant;
 
-use bevy::{color::palettes::tailwind, gizmos, math::bounding::BoundingVolume, prelude::*};
+#[cfg(feature = "debug_draw")]
+use bevy::color::palettes::tailwind;
+#[cfg(feature = "hot")]
+use bevy_simple_subsecond_system::hot;
+
 use crate::{
-    agent::*, archipelago::*, nav_mesh::{self, NavigationMesh}, prelude::RavenGizmos, tile::*, Bounding
+    Bounding,
+    agent::{self, *},
+    archipelago::{self, *},
+    bounding_box::BoundingAabb3d,
+    nav_mesh::NavigationMesh,
+    tile::{self, *},
 };
+use bevy::prelude::*;
 
 #[derive(Default, Resource, Deref, DerefMut)]
 pub struct PathingResults(pub Vec<PathingResult>);
 
 pub struct PathingResult {
-  /// The agent that searched for the path.
-  pub agent: Entity,
-  /// Whether the pathing succeeded or failed.
-  pub success: bool,
-  /// The number of "nodes" explored while finding the path. Note this may be
-  /// zero if the start and end point are known to be disconnected.
-  pub explored_nodes: u32,
+    /// The agent that searched for the path.
+    pub _agent: Entity,
+    /// Whether the pathing succeeded or failed.
+    pub _success: bool,
+    /// The number of "nodes" explored while finding the path. Note this may be
+    /// zero if the start and end point are known to be disconnected.
+    pub _explored_nodes: u32,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash, PartialOrd, Ord)]
 pub(crate) struct NodeRef {
-  /// The tile of the node.
-  pub(crate) tile_entity: Entity,
-  /// The index of the node in the tile.
-  pub(crate) polygon_index: usize,
+    /// The tile of the node.
+    pub(crate) tile_entity: Entity,
+    /// The index of the node in the tile.
+    pub(crate) polygon_index: usize,
 }
 
-
-///
+#[hot]
 pub fn update_navigation(
     mut pathing_results: ResMut<PathingResults>,
-    mut archepelago_query: Query<(&Archipelago, &ArchipelagoAgents, &TileLookup, &ArchipelagoTiles)>,
-    mut agent_query: Query<(&GlobalTransform, &AgentTarget, &AgentState ), With<Agent>>,
-    tile_query: Query<(&Bounding, &GlobalTransform, &TileNavMesh)>,
+    mut archepelago_query: Query<(
+        &Archipelago,
+        &ArchipelagoAgents,
+        &TileLookup,
+        &ArchipelagoTiles,
+    )>,
+    mut agent_query: Query<(&GlobalTransform, &mut AgentTarget, &AgentState), With<Agent>>,
+    tile_query: Query<(&Name, &GlobalTransform, &Bounding, &TileNavMesh)>,
     nav_mesh: Res<Assets<NavigationMesh>>,
-    mut gizmos: Gizmos<RavenGizmos>,
+    #[cfg(feature = "debug_draw")] mut gizmos: Gizmos<crate::debug_draw::RavenGizmos>,
     time: Res<Time>,
 ) {
+    use bevy::math::bounding::Aabb3d;
+
+    use crate::debug_draw;
+
     let _dt = time.delta_secs();
     pathing_results.clear();
 
+    let t1 = Instant::now();
+
+    info!("Update Navigation");
+    //let point = Vec3::new(0.0, 0.0, 0.0);
+    // Sample Point
+
     for (archipelago, agents, _tile_lookup, archipelago_tiles) in archepelago_query.iter_mut() {
         for agent_entity in agents.iter() {
-            let (agent_transform, _agent_target, _agent_state) = agent_query.get_mut(agent_entity).unwrap();
-            let agent_position = agent_transform.translation();
+            let (agent_transform, mut agent_target, _agent_state) =
+                agent_query.get_mut(agent_entity).unwrap();
 
-            // Sample Point
+            let point = agent_transform.translation();
 
-            let point = Vec3::new(0.0, 0.0, 0.0);
+            #[cfg(feature = "debug_draw")]
+            gizmos.line(
+                point,
+                match *agent_target {
+                    AgentTarget::None => Vec3::ZERO,
+                    AgentTarget::Point(vec3) => vec3,
+                    AgentTarget::Entity(_entity) => Vec3::Y * 100.0, // jupst point up for now
+                },
+                tailwind::RED_800,
+            );
 
             let mut best_point = None;
+
+            // each each tile in the archipelago
             for tile_entity in archipelago_tiles.iter() {
-                let Ok((_tile_bounding, tile_transform, tile_nav_mesh)) = tile_query.get(tile_entity) else {
+                let Ok((tile_name, tile_transform, tile_bounding, tile_nav_mesh)) =
+                    tile_query.get(tile_entity)
+                else {
                     // tile has no nav mesh yet
+                    info_once!("Tile {tile_entity} has no nav mesh yet");
                     continue;
                 };
-                let nav_mesh = nav_mesh.get(&tile_nav_mesh.0).unwrap();                                                
-                let relative_point = tile_transform.affine().inverse().transform_point(point);                
-
+                let nav_mesh = nav_mesh.get(&tile_nav_mesh.0).unwrap();
+                            
                 // find the closest point on the nav mesh
-                let Some((sampled_point, sampled_node)) = nav_mesh.sample_point(relative_point, &archipelago.agent_options) else {
+                let Some((world_point, sampled_node)) =
+                    nav_mesh.sample_point(point, tile_transform, tile_bounding, &archipelago.agent_options, &mut gizmos)
+                else {
                     continue;
-                };
+                };                
 
-                let distance = relative_point.distance_squared(sampled_point);
-                println!("Sampled point: {:?}, distance: {:?}", sampled_point, distance);
-
+                let distance = point.distance_squared(world_point);
+                // skip if we got a worse point
                 match best_point {
-                    Some((best_distance, _)) if distance >= best_distance => continue,
+                    Some((best_distance, _)) if distance < best_distance => {
+                        best_point = Some((
+                            distance,
+                            (
+                                world_point,
+                                NodeRef {
+                                    tile_entity,
+                                    polygon_index: sampled_node,
+                                },
+                            ),
+                        ));
+                    },
                     _ => {}
-                }
-
-                best_point = Some((
-                    distance,
-                    (
-                        tile_transform.transform_point(sampled_point),
-                        NodeRef { tile_entity, polygon_index: sampled_node },
-                    ),
-                ));
+                };
+                
             }
 
-            if let Some((_, (best, _))) = best_point {
+            if let Some((dist, (best, node))) = best_point {
+                info!(
+                    "Best point: {:?} to {:?} on {:?}: {:?}",
+                    point, best, node, dist
+                );
+                *agent_target = AgentTarget::Point(best);
+
                 // found the best point
-                gizmos.line(agent_position, best, tailwind::GREEN_800);
+                #[cfg(feature = "debug_draw")]
+                gizmos.line(point, best, tailwind::GREEN_800);
             }
-
-
         }
-    }            
+
+        let t2 = Instant::now();
+        let elapsed = t2.duration_since(t1);
+        info!("Update Nav: {:?}", elapsed);
+    }
 
     // TODO: make the edge_link_distance configurable.
     // let (invalidated_boundary_links, invalidated_islands) =

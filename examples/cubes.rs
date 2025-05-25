@@ -4,17 +4,21 @@ use avian3d::{math::*, prelude::*};
 use bevy::prelude::*;
 mod common; // helper functions
 use common::*;
+use raven::prelude::*;
 
 fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins,
             PhysicsPlugins::default(),
+            RavenPlugin,
+            RavenDebugPlugin::default(),      
             ExampleCommonPlugin,
         ))
         .insert_resource(ClearColor(Color::srgb(0.05, 0.05, 0.1)))
         .add_systems(Startup, setup)
         .add_systems(Update, movement)
+
         .run();
 }
 

@@ -1,8 +1,6 @@
 use crate::{agent::*, character::*, tile::*, tiles::NavMeshTile};
 use bevy::{
-    platform::collections::{HashMap, HashSet},
-    prelude::*,
-    tasks::Task,
+    math::bounding::Aabb3d, platform::collections::{HashMap, HashSet}, prelude::*, tasks::Task
 };
 use bevy_inspector_egui::{inspector_options::std_options::NumberDisplay, prelude::*};
 use std::num::{NonZeroU8, NonZeroU16};
@@ -104,7 +102,7 @@ pub struct Archipelago {
 
 impl Archipelago {
     pub fn new(agent_radius: f32, agent_height: f32, size: Vec3) -> Self {
-        let cell_width =  0.42 ;// agent_radius / 2.0;
+        let cell_width =  agent_radius / 2.0;
         let cell_height = agent_radius / 4.0;
 
         let walkable_height = (agent_height / cell_height) as u16;
@@ -133,7 +131,7 @@ impl Archipelago {
                 obstacle_avoidance_time_horizon: 0.5,
                 reached_destination_avoidance_responsibility: 0.1,
                 point_sample_distance: PointSampleDistance {
-                    horizontal_distance: 0.2 * agent_radius,
+                    horizontal_distance: 0.3 * agent_radius,
                     distance_above: 2.0, // 0.5 * agent_radius,
                     distance_below: 0.5, // agent_radius,
                     vertical_preference_ratio: 2.0,
@@ -377,6 +375,8 @@ pub struct AgentOptions {
     pub reached_destination_avoidance_responsibility: f32,
 }
 
+
+
 #[derive(Clone, Reflect, Debug)]
 pub struct DetailMeshSettings {
     /// The maximum acceptible error in height between the nav-mesh polygons & the true world (in cells).
@@ -413,4 +413,38 @@ pub struct PointSampleDistance {
     /// the query point 1.9 units away will be selected over a sample point 1.0
     /// unit away horizontally. This value must be positive.
     pub vertical_preference_ratio: f32,
+}
+
+
+impl PointSampleDistance {
+    pub fn aabb(&self) -> Aabb3d {
+        Aabb3d {
+            min: Vec3A::new(
+                -self.horizontal_distance,
+                -self.distance_below, // yes, this is the opposite of what you think
+                -self.horizontal_distance,
+            ),
+            max: Vec3A::new(
+                self.horizontal_distance,
+                self.distance_above,  // same
+                self.horizontal_distance,
+            ),
+        }
+
+    }
+    pub fn aabb_reversed(&self) -> Aabb3d {
+        Aabb3d {
+            min: Vec3A::new(
+                -self.horizontal_distance,
+                -self.distance_above, // yes, this is the opposite of what you think
+                -self.horizontal_distance,
+            ),
+            max: Vec3A::new(
+                self.horizontal_distance,
+                self.distance_below,  // same
+                self.horizontal_distance,
+            ),
+        }
+
+    }
 }

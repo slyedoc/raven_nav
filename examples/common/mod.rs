@@ -1,6 +1,7 @@
 mod camera_free;
 use bevy_enhanced_input::EnhancedInputPlugin;
 pub use camera_free::*;
+use raven::prelude::RavenGizmos;
 pub use sly_editor::*;
 
 mod archipelago_movement;
@@ -8,6 +9,7 @@ pub use archipelago_movement::*;
 
 use bevy::{
     asset::RenderAssetUsages,
+    input::common_conditions::input_just_pressed,
     prelude::*,
     render::mesh::{Indices, PrimitiveTopology},
 };
@@ -20,13 +22,22 @@ impl Plugin for ExampleCommonPlugin {
     fn build(&self, app: &mut App) {
         // Add diagnostics.
         app.add_plugins((
-            SlyEditorPlugin::default(), // custom bevy_egui_inspector and avian editor
+            SlyEditorPlugin::default(), // custom bevy_egui_inspector
             EnhancedInputPlugin,
             CameraFreePlugin,          // camera movement
             ArchipelagoMovementPlugin, // arch movement, used to test rebuilds
         ))
+        .add_systems(
+            Update,
+            toggle_debug_draw.run_if(input_just_pressed(KeyCode::KeyM)),
+        )
         .add_systems(Startup, setup_key_instructions);
     }
+}
+
+fn toggle_debug_draw(mut store: ResMut<GizmoConfigStore>) {
+    let config = store.config_mut::<RavenGizmos>().0;
+    config.enabled = !config.enabled;
 }
 
 fn setup_key_instructions(mut commands: Commands) {
