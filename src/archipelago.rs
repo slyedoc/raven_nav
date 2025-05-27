@@ -1,4 +1,4 @@
-use crate::{agent::*, character::*, tile::*, tiles::NavMeshTile};
+use crate::{agent::*, character::*, mesher::PolyMesh, nav_mesh::{NavigationMesh, ValidationError}, tile::*, tiles::NavMeshTile};
 use bevy::{
     math::bounding::Aabb3d, platform::collections::{HashMap, HashSet}, prelude::*, tasks::Task
 };
@@ -352,7 +352,7 @@ pub struct ActiveGenerationTasks(pub Vec<NavMeshGenerationJob>);
 pub struct NavMeshGenerationJob {
     pub entity: Entity,
     // pub generation: u64,
-    pub task: Task<NavMeshTile>,
+    pub task: Task<Result<(NavigationMesh, Mesh), ValidationError>>,
 }
 
 #[derive(Clone, Reflect, Debug)]
@@ -392,8 +392,6 @@ pub struct DetailMeshSettings {
 
 #[derive(Reflect, Debug, PartialEq, Clone)]
 pub struct PointSampleDistance {
-    /// The horizontal distance that a node may be sampled. If a sample point is
-    /// further than this distance away horizontally, it will be ignored.
     pub horizontal_distance: f32,
 
     /// The vertical distance above the query point that a node may be sampled.

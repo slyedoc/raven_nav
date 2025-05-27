@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod camera_free;
 use bevy_enhanced_input::EnhancedInputPlugin;
 pub use camera_free::*;
@@ -6,6 +8,9 @@ pub use sly_editor::*;
 
 mod archipelago_movement;
 pub use archipelago_movement::*;
+
+mod agent;
+pub use agent::*;
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -27,6 +32,7 @@ impl Plugin for ExampleCommonPlugin {
             CameraFreePlugin,          // camera movement
             ArchipelagoMovementPlugin, // arch movement, used to test rebuilds
         ))
+        .init_resource::<AgentSpawner>()
         .add_systems(
             Update,
             toggle_debug_draw.run_if(input_just_pressed(KeyCode::KeyM)),

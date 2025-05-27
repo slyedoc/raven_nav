@@ -7,7 +7,7 @@ use bevy::{
 
 
 use crate::{  
-  archipelago::*, bounding_box::*, nav_mesh::*
+  archipelago::*, bounding_box::*, nav_mesh::*, tile::build_nav_mesh
 };
 
 // use super::{NavigationMesh, ValidationError};
@@ -27,7 +27,7 @@ fn validation_computes_bounds() {
     polygon_type_indices: vec![0, 0],
   };
 
-  let valid_mesh = source_mesh.validate().expect("Validation succeeds.");
+  let valid_mesh = build_nav_mesh(&source_mesh).expect("Validation succeeds.");
   assert_eq!(
     valid_mesh.mesh_bounds,
     Aabb3d { min: vec3a(0.0, 0.0, -0.25), max: vec3a(2.0, 4.0, 1.0) }
@@ -36,7 +36,7 @@ fn validation_computes_bounds() {
 
 #[test]
 fn correctly_computes_bounds_for_small_number_of_points() {
-  let valid_mesh = PreNavigationMesh {
+  let source_mesh = PreNavigationMesh {
     vertices: vec![
       Vec3::new(-1.0, -1.0, -1.0),
       Vec3::new(1.0, 0.0, 1.0),
@@ -44,9 +44,9 @@ fn correctly_computes_bounds_for_small_number_of_points() {
     ],
     polygons: vec![vec![0, 1, 2]],
     polygon_type_indices: vec![0],
-  }
-  .validate()
-  .expect("Validation succeeds");
+  };
+  let valid_mesh = build_nav_mesh(&source_mesh)
+    .expect("Validation succeeds");  
 
   assert_eq!(
     valid_mesh.mesh_bounds,
@@ -94,8 +94,7 @@ fn polygons_derived_and_vertices_copied() {
     },
   ];
 
-  let valid_mesh =
-    source_mesh.clone().validate().expect("Validation succeeds.");
+  let valid_mesh = build_nav_mesh(&source_mesh).expect("Validation succeeds.");
   assert_eq!(valid_mesh.vertices, source_mesh.vertices);
   assert_eq!(valid_mesh.polygons, expected_polygons);
   assert_eq!(valid_mesh.used_type_indices, HashSet::from([1337, 123]));
@@ -113,9 +112,7 @@ fn error_on_wrong_type_indices_length() {
     polygon_type_indices: vec![0, 0],
   };
 
-  let error = source_mesh
-    .clone()
-    .validate()
+  let error = build_nav_mesh(&source_mesh)
     .expect_err("Wrong type indices length should be detected.");
   match error {
     ValidationError::TypeIndicesHaveWrongLength(polygons, type_indices) => {
@@ -141,9 +138,7 @@ fn error_on_concave_polygon() {
     polygon_type_indices: vec![0],
   };
 
-  let error = source_mesh
-    .clone()
-    .validate()
+  let error = build_nav_mesh(&source_mesh)
     .expect_err("Concave polygon should be detected.");
   match error {
     ValidationError::ConcavePolygon(polygon) => assert_eq!(polygon, 0),
@@ -162,9 +157,7 @@ fn error_on_small_polygon() {
     polygon_type_indices: vec![0],
   };
 
-  let error = source_mesh
-    .clone()
-    .validate()
+  let error = build_nav_mesh(&source_mesh)
     .expect_err("Small polygon should be detected.");
   match error {
     ValidationError::NotEnoughVerticesInPolygon(polygon) => {
@@ -189,9 +182,7 @@ fn error_on_bad_polygon_index() {
     polygon_type_indices: vec![0],
   };
 
-  let error = source_mesh
-    .clone()
-    .validate()
+  let error = build_nav_mesh(&source_mesh)
     .expect_err("Bad polygon index should be detected.");
   match error {
     ValidationError::InvalidVertexIndexInPolygon(polygon) => {
@@ -216,9 +207,7 @@ fn error_on_degenerate_edge() {
     polygon_type_indices: vec![0],
   };
 
-  let error = source_mesh
-    .clone()
-    .validate()
+  let error = build_nav_mesh(&source_mesh)
     .expect_err("Degenerate edge should be detected.");
   match error {
     ValidationError::DegenerateEdgeInPolygon(polygon) => {
@@ -247,9 +236,7 @@ fn error_on_doubly_connected_edge() {
     polygon_type_indices: vec![0, 0, 0],
   };
 
-  let error = source_mesh
-    .clone()
-    .validate()
+  let error = build_nav_mesh(&source_mesh)
     .expect_err("Doubly connected edge should be detected.");
   match error {
     ValidationError::DoublyConnectedEdge(vertex_1, vertex_2) => {
@@ -286,7 +273,7 @@ fn derives_connectivity_and_boundary_edges() {
   };
 
   let mut valid_mesh =
-    source_mesh.clone().validate().expect("Validation succeeds.");
+    build_nav_mesh(&source_mesh).expect("Validation succeeds.");
 
   // Sort boundary edges to ensure the order is consistent when comparing.
   valid_mesh.boundary_edges.sort_by_key(|boundary_edge| {

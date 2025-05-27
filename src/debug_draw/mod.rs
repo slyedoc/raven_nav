@@ -1,6 +1,6 @@
 use bevy::{
     color::palettes::tailwind,
-    gizmos::{config::GizmoConfigGroup, AppGizmoBuilder},
+    gizmos::{AppGizmoBuilder, config::GizmoConfigGroup},
     math::bounding::{Aabb3d, BoundingVolume},
     prelude::*,
     reflect::Reflect,
@@ -51,7 +51,7 @@ impl Default for RavenGizmos {
     fn default() -> Self {
         Self {
             archipelago_bounds: Some(tailwind::GRAY_300.with_alpha(0.5).into()),
-            tile_bounds: None, // Some(tailwind::RED_600.with_alpha(0.5).into()),
+            tile_bounds: Some(tailwind::RED_100.with_alpha(0.5).into()),
             tile_polygons: Some(tailwind::GREEN_500.into()),
             tile_edges: Some(tailwind::BLUE_500.into()),
         }
@@ -201,6 +201,13 @@ pub fn aabb3d_transform(bounding: &Aabb3d, transform: &GlobalTransform) -> Globa
             Transform::from_translation(bounding.center().into())
                 .with_scale((bounding.max - bounding.min).into()),
         )
+}
+
+pub fn aabb3d_global(bounding: &Aabb3d) -> GlobalTransform {
+    GlobalTransform::from(
+        Transform::from_translation(bounding.center().into())
+            .with_scale((bounding.max - bounding.min).into()),
+    )
 }
 
 // #[derive(Component)]

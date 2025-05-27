@@ -1,4 +1,8 @@
-use bevy::prelude::*;
+use bevy::{
+    asset::RenderAssetUsages,
+    prelude::*,
+    render::mesh::{Indices, PrimitiveTopology},
+};
 use smallvec::SmallVec;
 
 use crate::{
@@ -50,6 +54,8 @@ pub struct NavMeshTile {
     pub edges: Vec<[EdgeConnection; VERTICES_IN_TRIANGLE]>,
 }
 
+
+
 // impl NavMeshTile {
 //     /// Returns the closest point on ``polygon`` to ``position``.
 //     pub fn get_closest_point_in_polygon(&self, polygon: &Polygon, position: Vec3) -> Vec3 {
@@ -63,9 +69,9 @@ pub struct NavMeshTile {
 //     }
 // }
 
-/// Container for all nav-mesh tiles. Used for pathfinding queries.
-///
-/// Call [crate::query::find_path] to run pathfinding algorithm.
+// Container for all nav-mesh tiles. Used for pathfinding queries.
+//
+// Call [crate::query::find_path] to run pathfinding algorithm.
 // #[derive(Debug, Default, Clone, PartialEq)]
 // pub struct NavMeshTiles {
 //     pub tiles: HashMap<UVec2, NavMeshTile>,
@@ -598,57 +604,3 @@ pub struct NavMeshTile {
 
 //     (count, connecting_polys, connection_area)
 // }
-
-pub(super) fn create_nav_mesh_tile_from_poly_mesh(
-    poly_mesh: PolyMesh,
-    archipelago: &Archipelago,
-) -> NavMeshTile {
-    #[cfg(feature = "trace")]
-    let _span = info_span!("raven::create_nav_mesh_tile_from_poly_mesh").entered();
-
-    // Slight worry that the compiler won't optimize this but damn, it's cool.
-    let polygons = poly_mesh
-        .polygons
-        .into_iter()
-        .zip(poly_mesh.edges.iter())
-        .map(|(indices, edges)| {
-            // Pre build internal links.
-            let links = edges
-                .iter()
-                .enumerate()
-                .filter_map(|(i, edge)| {
-                    let EdgeConnection::Internal(neighbour_polygon) = edge else {
-                        return None;
-                    };
-
-                    Some(Link::Internal {
-                        edge: i as u8,
-                        neighbour_polygon: *neighbour_polygon,
-                    })
-                })
-                .collect();
-
-            Polygon { links, indices }
-        })
-        .collect();
-
-    let tile_origin = archipelago.get_tile_minimum_bound_with_border();
-    let vertices = poly_mesh
-        .vertices
-        .iter()
-        .map(|vertex| {
-            Vec3::new(
-                tile_origin.x + vertex.x as f32 * archipelago.cell_width,
-                tile_origin.y + vertex.y as f32 * archipelago.cell_height,
-                tile_origin.z + vertex.z as f32 * archipelago.cell_width,
-            )
-        })
-        .collect();
-
-    NavMeshTile {
-        vertices,
-        edges: poly_mesh.edges,
-        polygons,
-        areas: poly_mesh.areas,
-    }
-}

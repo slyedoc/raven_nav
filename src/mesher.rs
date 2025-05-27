@@ -6,7 +6,7 @@ use crate::{
     heightfields::OpenTile,
 };
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct PolyMesh {
     pub vertices: Vec<U16Vec3>,
     pub polygons: Vec<[u32; VERTICES_IN_TRIANGLE]>, //
@@ -14,6 +14,7 @@ pub struct PolyMesh {
     pub areas: Vec<Area>,
     pub regions: Vec<u16>,
 }
+
 
 const VERTEX_BUCKET_COUNT: usize = 1 << 12; // 4 096
 pub const VERTICES_IN_TRIANGLE: usize = 3; // Don't change this. The mesher can't make anything other than triangles.

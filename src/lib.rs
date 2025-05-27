@@ -22,7 +22,6 @@ mod regions;
 mod tile;
 mod tiles;
 
-
 use agent::*;
 use archipelago::*;
 
@@ -36,15 +35,21 @@ use tile::*;
 
 use std::sync::Arc;
 
-
 use avian3d::{
     parry::{math::Isometry, na::Vector3, shape::HeightField},
     prelude::*,
 };
 use bevy::{
-    ecs::entity::EntityHashMap, input::common_conditions::*, math::bounding::Aabb3d, platform::collections::HashSet, prelude::*, tasks::{futures_lite::future, AsyncComputeTaskPool}
+    asset::RenderAssetUsages,
+    ecs::entity::EntityHashMap,
+    input::common_conditions::*,
+    math::bounding::Aabb3d,
+    platform::collections::HashSet,
+    prelude::*,
+    render::mesh::{Indices, PrimitiveTopology},
+    tasks::{AsyncComputeTaskPool, futures_lite::future},
 };
-use tiles::{NavMeshTile, create_nav_mesh_tile_from_poly_mesh};
+
 
 pub mod prelude {
     #[cfg(feature = "debug_draw")]
@@ -59,11 +64,9 @@ pub struct RavenPlugin;
 
 impl Plugin for RavenPlugin {
     fn build(&self, app: &mut App) {
-
         #[cfg(feature = "hot")]
         app.add_plugins(SimpleSubsecondPlugin::default());
-        
-        
+
         app.init_asset::<NavigationMesh>()
             .init_resource::<PathingResults>()
             .add_systems(
@@ -82,7 +85,8 @@ impl Plugin for RavenPlugin {
                     //(add_agents_to_archipelago, add_characters_to_archipelago),
                     start_tile_build_tasks,
                     update_tile_build_tasks,
-                    navigation::update_navigation.run_if(input_pressed(KeyCode::Space)),
+                    navigation::update_navigation
+                    //navigation::update_navigation.run_if(input_pressed(KeyCode::Space))
                 )
                     .chain()
                     .after(TransformSystem::TransformPropagate),
@@ -212,27 +216,6 @@ fn archipelago_changed(
         for e in collider_query.iter_mut() {
             commands.entity(e).insert(UpdateTileAffectors);
         }
-    }
-}
-
-// TODO: collapse these 2 to single struct
-/// Converts the [`NavMeshTile`] into the corresponding [`PreNavigationMesh`].
-fn tile_to_landmass_nav_mesh(tile: NavMeshTile) -> PreNavigationMesh {
-    PreNavigationMesh {
-        vertices: tile.vertices,
-        polygons: tile
-            .polygons
-            .iter()
-            .map(|polygon| {
-                polygon
-                    .indices
-                    .iter()
-                    .copied()
-                    .map(|i| i as usize)
-                    .collect()
-            })
-            .collect(),
-        polygon_type_indices: vec![0; tile.polygons.len()],
     }
 }
 
@@ -413,27 +396,34 @@ fn update_tile_build_tasks(
     mut commands: Commands,
     mut archipelago_query: Query<&mut ActiveGenerationTasks, With<Archipelago>>,
     mut nav_meshes: ResMut<Assets<NavigationMesh>>,
+    mut _meshes: ResMut<Assets<Mesh>>,
+    mut _materials: ResMut<Assets<StandardMaterial>>,
 ) {
     for mut tasks in archipelago_query.iter_mut() {
         // check active tasks, canceling if not current
         tasks.0.retain_mut(|job| {
-            if let Some(nav_mesh_tile) = future::block_on(future::poll_once(&mut job.task)) {
-                // Generation complete
-                let pre_nav_mesh = tile_to_landmass_nav_mesh(nav_mesh_tile);
-                match pre_nav_mesh.validate() {
-                    Ok(nav_mesh) => {
-                        let nav_mesh_handle = nav_meshes.add(nav_mesh);
-                        //info!("Tile {:?} generated {:?}", job.entity, nav_mesh_handle.id());
+            if let Some(result) = future::block_on(future::poll_once(&mut job.task)) {
+                match result {
+                    Ok((nav_mesh, _mesh)) => {
+                        let nav_mesh_handle = nav_meshes.add(nav_mesh);                                            
                         commands
                             .entity(job.entity)
                             .insert(TileNavMesh(nav_mesh_handle));
+                            //.insert(Mesh3d(meshes.add(mesh)))
+                            // .insert(MeshMaterial3d(materials.add(StandardMaterial {
+                            //     base_color: Color::WHITE,
+                            //     perceptual_roughness: 0.5,
+                            //     metallic: 0.0,
+                            //     ..default()
+                            // })));
+                            
                     }
                     Err(err) => {
-                        warn!("Failed to validate oxidized_navigation tile: {err:?}");
-                        // remote existing nav mesh if any
+                        warn!("Failed to generate oxidized_navigation tile: {err:?}");
+                        // remove existing nav mesh if any
                         commands.entity(job.entity).remove::<TileNavMesh>();
                     }
-                };
+                }                
                 return false;
             }
             true
@@ -467,8 +457,6 @@ fn handle_removed_affectors(
     }
     removed.clear();
 }
-
-
 
 fn get_neighbour_index(tile_size: usize, index: usize, dir: usize) -> usize {
     match dir {

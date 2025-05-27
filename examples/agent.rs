@@ -21,7 +21,7 @@ fn main() {
             RavenDebugPlugin::default(),        
             ExampleCommonPlugin,
         ))
-        .init_resource::<AgentSpawner>()
+        
         .add_systems(Startup, setup)        
         .run();
 }
@@ -81,51 +81,10 @@ fn setup(
     commands.spawn((
         Name::new("Agent 1"),
         agent_spawner.spawn(),
-        Transform::from_xyz(2.0, 1.9, 0.0),
-        Collider::capsule(0.5, 1.9),
-        RigidBody::Dynamic,
         Agent,
-        AgentArchipelago(a1),
+        Transform::from_xyz(0.0, 2.0, 2.0),
     ));
 }
 
-
-#[derive(Resource)]
-struct AgentSpawner {
-  mesh: Handle<Mesh>,
-  material: Handle<StandardMaterial>,
-  //archipelago_entity: Entity,
-  // target_entity: Entity,
-  //fast_material: Handle<ColorMaterial>,
-  //slow_node_type: NodeType,
-}
-
-impl AgentSpawner {
-    fn spawn(&self) -> impl Bundle {
-        (
-            Mesh3d(self.mesh.clone()),
-            MeshMaterial3d(self.material.clone())
-        )
-    }
-}
-
-impl FromWorld for AgentSpawner {
-    fn from_world(world: &mut World) -> Self {
-        
-        let mut meshes = world.resource_mut::<Assets<Mesh>>();
-        let mesh = meshes.add(Capsule3d::new(0.5, 1.9));
-
-        let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
-        let material = materials.add(StandardMaterial {
-            base_color: tailwind::GREEN_500.into(),
-            ..default()
-        });  
-
-        Self {
-            mesh,
-            material,            
-        }
-    }
-}
 
 

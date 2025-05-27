@@ -31,6 +31,7 @@ fn setup(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    agent_spawner: Res<AgentSpawner>,
 ) {
     commands.spawn((
         Name::new("Camera"),
@@ -74,12 +75,19 @@ fn setup(
 
     commands.spawn((
         Name::new("Heightfield"),
-        Transform::IDENTITY,
+        Transform::from_xyz(0., -15.0, 0.),
         Mesh3d(meshes.add(generate_mesh_from_heightfield(&heightfield, scale, true))),
         MeshMaterial3d(materials.add(Color::srgb(0.7, 0.7, 0.8))),
         Collider::heightfield(heightfield, scale),
         RigidBody::Static,
         NavMeshAffector::default(), // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
+    ));
+
+    commands.spawn((
+        Name::new("Agent 1"),
+        agent_spawner.spawn(),
+        Agent,
+        Transform::from_xyz(0.0, 2.0, 2.0),
     ));
 
     // commands.spawn((

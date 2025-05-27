@@ -1,4 +1,5 @@
-use bevy::{math::bounding::{Aabb3d}, prelude::*};
+#![allow(dead_code)]
+use bevy::{math::bounding::{Aabb3d, RayCast3d}, prelude::*};
 
 #[derive(Component, Clone, Debug, Deref, DerefMut, Reflect)]
 #[reflect(Component)]
@@ -6,9 +7,7 @@ pub struct Bounding(pub Aabb3d);
 
 
 pub trait BoundingAabb3d {
-
     fn contains_point(&self, point: impl Into<Vec3A>) -> bool;
-
     fn from_points(points: impl Iterator<Item = impl Into<Vec3A>>) -> Result<Aabb3d, BoundingBoxError>;
 }
 
@@ -45,3 +44,28 @@ fn test_contains_point() {
     };
     assert_eq!(aabb.contains_point(Vec3A::new(0.0, 0.0, 0.0)), true);
 }
+
+pub trait RayCast3dToSpace {
+    fn to_space(&self, transform: &GlobalTransform) -> RayCast3d;    
+    fn get_point(&self, distance: f32) -> Vec3A;
+}
+
+impl RayCast3dToSpace for RayCast3d {
+    // TODO: figured this be built in to bevy's RayCast3d
+    #[inline]
+    fn to_space(&self, transform: &GlobalTransform) -> RayCast3d {
+        let world_to = transform.affine().inverse();
+        RayCast3d::new(
+            world_to.transform_point3a(self.origin),            
+            Dir3A::new(world_to.transform_vector3a(self.direction.as_vec3a())).unwrap(),
+            self.max,
+        )
+    }
+
+    #[inline]
+    fn get_point(&self, distance: f32) -> Vec3A {
+        self.origin + *self.direction * distance
+    }
+}
+
+    
