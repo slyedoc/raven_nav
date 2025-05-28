@@ -1,31 +1,52 @@
-use std::cmp::Ordering;
+pub mod regions;
+pub mod contour;
+pub mod voxelization;
+pub mod detail_mesh;
+pub mod mesher;
+pub mod nav_mesh;
 
 use bevy::{
     asset::RenderAssetUsages,
-    math::bounding::Aabb3d,
-    platform::collections::{HashMap, HashSet},
-    prelude::*, render::mesh::Indices,
+        math::bounding::Aabb3d,
+    prelude::*,
+       platform::collections::{HashMap, HashSet},
+    render::mesh::{Indices, PrimitiveTopology},
 };
+use smallvec::SmallVec;
+
+use super::mesher::PolyMesh;
+
+use std::cmp::Ordering;
+
 use disjoint::DisjointSet;
 
 use crate::{
-    Connectivity, MeshEdgeRef, ValidPolygon,
+    Area,
+    archipelago::Archipelago,
+    mesher::{EdgeConnection, EdgeConnectionDirection, VERTICES_IN_TRIANGLE, build_poly_mesh},
+    
     archipelago::ArchipelagoTiles,
-    bounding_box::BoundingAabb3d,
-    build_contours,
+    utils::Aabb3dExt,
+   
     collider::*,
-    heightfields::*,
-    mesher::{EdgeConnection, PolyMesh, build_poly_mesh},
-    nav_mesh::{NavigationMesh, PreNavigationMesh, ValidationError},
-    prelude::Archipelago,
-    regions::build_regions,
-    tiles::{Link, NavMeshTile},
+    tile::{nav_mesh::*, contour::*, voxelization::*},
+    
+    regions::build_regions,    
 };
 
 #[derive(Component, Reflect)]
 #[require(Transform, TileAffectors)] //TileGeneration
 pub struct Tile(pub UVec2);
 
+/// Tile bounds
+#[derive(Component, Reflect)]
+#[reflect(Component)]
+pub struct TileAabb(pub Aabb3d);
+
+/// Tile Mesh Aaabb, generated from the nav mesh,
+#[derive(Component, Reflect, Deref, DerefMut)]
+#[reflect(Component)]
+pub struct TileMeshAabb(pub Aabb3d);
 
 /// Generation ticker for tiles.
 /// Used only add newest nav_mesh on generation
@@ -45,89 +66,39 @@ pub struct TileArchipelago(pub Entity);
 #[reflect(Component)]
 pub struct TileNavMesh(pub Handle<NavigationMesh>);
 
+pub(crate) type TileBakeResult = Result<(NavigationMesh, Aabb3d, Mesh), ValidationError>;
+
 /// All Geometry collections are in local space of the tile
 pub(crate) async fn build_tile(
     archipelago: Archipelago,
     geometry_collections: Vec<GeometryCollection>,
     heightfield_collections: Vec<HeightFieldCollection>,
-) -> Result<(NavigationMesh, Mesh), ValidationError> {
+) -> TileBakeResult {
     #[cfg(feature = "trace")]
     let _span = info_span!("Build Tile", name = "raven::build_tile").entered();
 
     let triangle_collection: Vec<TriangleCollection> = convert_geometry(geometry_collections);
-    let voxelized_tile =
-        build_heightfield_tile(&archipelago, triangle_collection, heightfield_collections);
-    let mut open_tile = build_open_heightfield_tile(voxelized_tile, &archipelago);
-    erode_walkable_area(&mut open_tile, &archipelago);
-    calculate_distance_field(&mut open_tile, &archipelago);
-    build_regions(&mut open_tile, &archipelago);
-    let contour_set = build_contours(&open_tile, &archipelago);
-    let poly_tile = build_poly_mesh(contour_set, &archipelago, &open_tile);
+    let voxelized_tile = voxelization::build_heightfield_tile(&archipelago, triangle_collection, heightfield_collections);
+    let mut open_tile = voxelization::build_open_heightfield_tile(voxelized_tile, &archipelago);
+    voxelization::erode_walkable_area(&mut open_tile, &archipelago);
+    voxelization::calculate_distance_field(&mut open_tile, &archipelago);
+    regions::build_regions(&mut open_tile, &archipelago);
+    let contour_set = contour::build_contours(&open_tile, &archipelago);
+    let poly_tile = mesher::build_poly_mesh(contour_set, &archipelago, &open_tile);
     let nav_mesh_tile = build_nav_mesh_tile(poly_tile.clone(), &archipelago);
     let pre_nav_mesh = build_pre_navigation_mesh(nav_mesh_tile);
-    let nav_mesh = build_nav_mesh(&pre_nav_mesh)?;
+    let (nav_mesh, aabb) = build_nav_mesh(&pre_nav_mesh)?;
     let mesh = build_mesh(poly_tile, &archipelago);
 
-    Ok((nav_mesh, mesh))
-}
-
-pub fn build_nav_mesh_tile(poly_mesh: PolyMesh, archipelago: &Archipelago) -> NavMeshTile {
-    #[cfg(feature = "trace")]
-    let _span = info_span!("raven::create_nav_mesh_tile_from_poly_mesh").entered();
-
-    // Slight worry that the compiler won't optimize this but damn, it's cool.
-    let polygons = poly_mesh
-        .polygons
-        .into_iter()
-        .zip(poly_mesh.edges.iter())
-        .map(|(indices, edges)| {
-            // Pre build internal links.
-            let links = edges
-                .iter()
-                .enumerate()
-                .filter_map(|(i, edge)| {
-                    let EdgeConnection::Internal(neighbour_polygon) = edge else {
-                        return None;
-                    };
-
-                    Some(Link::Internal {
-                        edge: i as u8,
-                        neighbour_polygon: *neighbour_polygon,
-                    })
-                })
-                .collect();
-
-            crate::tiles::Polygon { links, indices }
-        })
-        .collect();
-
-    let tile_origin = archipelago.get_tile_minimum_bound_with_border();
-    let vertices = poly_mesh
-        .vertices
-        .iter()
-        .map(|vertex| {
-            Vec3::new(
-                tile_origin.x + vertex.x as f32 * archipelago.cell_width,
-                tile_origin.y + vertex.y as f32 * archipelago.cell_height,
-                tile_origin.z + vertex.z as f32 * archipelago.cell_width,
-            )
-        })
-        .collect();
-
-    NavMeshTile {
-        vertices,
-        edges: poly_mesh.edges,
-        polygons,
-        areas: poly_mesh.areas,
-    }
+    Ok((nav_mesh, aabb, mesh))
 }
 
 fn build_mesh(poly_mesh: PolyMesh, archipelago: &Archipelago) -> Mesh {
-        #[cfg(feature = "trace")]
+    #[cfg(feature = "trace")]
     let _span = info_span!("raven::build_mesh").entered();
 
     // Slight worry that the compiler won't optimize this but damn, it's cool.
-    let polygons: Vec<crate::tiles::Polygon> = poly_mesh
+    let polygons: Vec<Polygon> = poly_mesh
         .polygons
         .into_iter()
         .zip(poly_mesh.edges.iter())
@@ -148,7 +119,7 @@ fn build_mesh(poly_mesh: PolyMesh, archipelago: &Archipelago) -> Mesh {
                 })
                 .collect();
 
-            crate::tiles::Polygon { links, indices }
+            Polygon { links, indices }
         })
         .collect();
 
@@ -166,17 +137,10 @@ fn build_mesh(poly_mesh: PolyMesh, archipelago: &Archipelago) -> Mesh {
         })
         .collect();
     let indices: Vec<u32> = polygons
-            .iter()
-            .flat_map(|polygon| {
-                polygon
-                    .indices                                                         
-                    
-            })
-            .collect();
+        .iter()
+        .flat_map(|polygon| polygon.indices)
+        .collect();
 
-
-
-    
     let mut mesh = Mesh::new(
         bevy::render::mesh::PrimitiveTopology::TriangleList,
         RenderAssetUsages::default(),
@@ -206,7 +170,9 @@ fn build_pre_navigation_mesh(tile: NavMeshTile) -> PreNavigationMesh {
     }
 }
 
-pub fn build_nav_mesh(mesh: &PreNavigationMesh) -> Result<NavigationMesh, ValidationError> {
+pub fn build_nav_mesh(
+    mesh: &PreNavigationMesh,
+) -> Result<(NavigationMesh, Aabb3d), ValidationError> {
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::build_nav_mesh_tile").entered();
 
@@ -395,14 +361,16 @@ pub fn build_nav_mesh(mesh: &PreNavigationMesh) -> Result<NavigationMesh, Valida
         }
     }
 
-    Ok(NavigationMesh {
+    Ok((
+        NavigationMesh {
+            polygons,
+            vertices: mesh.vertices.clone(),
+            boundary_edges,
+            used_type_indices,
+            //type_index_to_node_type: HashMap::new(),
+        },
         mesh_bounds,
-        polygons,
-        vertices: mesh.vertices.clone(),
-        boundary_edges,
-        used_type_indices,
-        //type_index_to_node_type: HashMap::new(),
-    })
+    ))
 }
 
 fn convert_geometry(geometry_collections: Vec<GeometryCollection>) -> Vec<TriangleCollection> {
@@ -424,4 +392,56 @@ fn convert_geometry(geometry_collections: Vec<GeometryCollection>) -> Vec<Triang
             area: geometry_collection.area,
         })
         .collect()
+}
+
+
+/// Representation of a link between different polygons either internal to the tile or external (crossing over to another tile).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Link {
+    Internal {
+        /// Edge on self polygon.
+        edge: u8,
+        /// Index of polygon this polygon is linked to.
+        neighbour_polygon: u16,
+    },
+    External {
+        /// Edge on self polygon.
+        edge: u8,
+        /// Index of polygon this polygon is linked to.
+        neighbour_polygon: u16,
+        /// Direction toward the neighbour polygon's tile.
+        direction: EdgeConnectionDirection,
+        /// Min % of this edge that connects to the linked polygon.
+        bound_min: u8, // % bound of edge that links to this.
+        // MAx % of this edge that connects to the linked polygon.
+        bound_max: u8, // For example: 10% -> 50% = the connected edge covers 10% from vertex A to B to 50%.
+    },
+}
+
+/// A polygon within a nav-mesh tile.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Polygon {
+    pub indices: [u32; VERTICES_IN_TRIANGLE],
+    pub links: SmallVec<[Link; VERTICES_IN_TRIANGLE]>, // This becomes a mess memory wise with a ton of different small objects around.
+}
+
+/// A single nav-mesh tile.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NavMeshTile {
+    /// Vertices in world space.
+    pub vertices: Vec<Vec3>,
+    // Polygons make up a form of graph, linking to other polygons (which could be on another mesh)
+    pub polygons: Vec<Polygon>,
+    pub areas: Vec<Area>,
+    pub edges: Vec<[EdgeConnection; VERTICES_IN_TRIANGLE]>,
+}
+
+pub fn get_neighbour_index(tile_size: usize, index: usize, dir: usize) -> usize {
+    match dir {
+        0 => index - 1,
+        1 => index + tile_size,
+        2 => index + 1,
+        3 => index - tile_size,
+        _ => panic!("Not a valid direction"),
+    }
 }

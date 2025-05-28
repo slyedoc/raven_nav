@@ -1,10 +1,11 @@
 use bevy::{math::U16Vec3, prelude::*};
 
-use super::math::{intersect, intersect_prop, left, left_on};
 use crate::{
-    Area, archipelago::Archipelago, contour::ContourSet, detail_mesh::build_detail_mesh,
-    heightfields::OpenTile,
+    math::{intersect, intersect_prop, left, left_on},
+    tile::{contour::ContourSet, detail_mesh::build_detail_mesh, voxelization::OpenTile},
 };
+
+use crate::{Area, archipelago::Archipelago};
 
 #[derive(Default, Debug, Clone)]
 pub struct PolyMesh {
@@ -15,13 +16,12 @@ pub struct PolyMesh {
     pub regions: Vec<u16>,
 }
 
-
 const VERTEX_BUCKET_COUNT: usize = 1 << 12; // 4 096
 pub const VERTICES_IN_TRIANGLE: usize = 3; // Don't change this. The mesher can't make anything other than triangles.
 
 pub fn build_poly_mesh(
     contour_set: ContourSet,
-    vox_settings: &Archipelago,
+    config: &Archipelago,
     open_tile: &OpenTile,
 ) -> PolyMesh {
     #[cfg(feature = "trace")]
@@ -98,7 +98,7 @@ pub fn build_poly_mesh(
         }
     }
 
-    if let Some(detail_poly_mesh) = build_detail_mesh(vox_settings, open_tile, &poly_mesh) {
+    if let Some(detail_poly_mesh) = build_detail_mesh(config, open_tile, &poly_mesh) {
         poly_mesh = detail_poly_mesh;
     }
 
@@ -110,8 +110,8 @@ pub fn build_poly_mesh(
     );
 
     // Fix portal edges.
-    let border_side = vox_settings.get_border_side() as u16;
-    let far_edge = vox_settings.tile_width.get() + border_side;
+    let border_side = config.get_border_side() as u16;
+    let far_edge = config.tile_width.get() + border_side;
 
     for (polygon_index, edges) in poly_mesh.edges.iter_mut().enumerate() {
         let indices = &poly_mesh.polygons[polygon_index];

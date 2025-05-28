@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::{
     Area,
-    heightfields::{OpenSpan, OpenTile},
+    tile::voxelization::{OpenSpan, OpenTile},
 };
 
 use super::get_neighbour_index;

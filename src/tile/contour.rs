@@ -5,12 +5,16 @@ use bevy::prelude::*;
 use crate::{
     archipelago::Archipelago,
     collider::Area,
-    get_neighbour_index,
-    heightfields::{OpenSpan, OpenTile},
+    tile::{        
+        voxelization::{OpenSpan, OpenTile},
+        get_neighbour_index,
+    },
+    
+    math::{in_cone, intersect},    
 };
 
-use super::math::{in_cone, intersect};
-use super::{FLAG_BORDER_VERTEX, MASK_CONTOUR_REGION};
+const FLAG_BORDER_VERTEX: u32 = 0x10000;
+const MASK_CONTOUR_REGION: u32 = 0xffff; // Masks out the above value.
 
 #[derive(Default, Clone, Debug)]
 pub struct Contour {

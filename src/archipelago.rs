@@ -1,4 +1,4 @@
-use crate::{agent::*, character::*, mesher::PolyMesh, nav_mesh::{NavigationMesh, ValidationError}, tile::*, tiles::NavMeshTile};
+use crate::{agent::*, character::*, tile::*};
 use bevy::{
     math::bounding::Aabb3d, platform::collections::{HashMap, HashSet}, prelude::*, tasks::Task
 };
@@ -348,11 +348,15 @@ pub struct DirtyTiles(pub HashSet<UVec2>);
 #[derive(Component, Default, Deref, DerefMut)]
 pub struct ActiveGenerationTasks(pub Vec<NavMeshGenerationJob>);
 
+#[derive(Component, Clone, Debug, Deref, DerefMut, Reflect)]
+#[reflect(Component)]
+pub struct ArchipelagoAabb(pub Aabb3d);
+
 /// A task that is generating a nav-mesh tile.
 pub struct NavMeshGenerationJob {
     pub entity: Entity,
     // pub generation: u64,
-    pub task: Task<Result<(NavigationMesh, Mesh), ValidationError>>,
+    pub task: Task<TileBakeResult>,
 }
 
 #[derive(Clone, Reflect, Debug)]

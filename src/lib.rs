@@ -6,32 +6,27 @@ use bevy_simple_subsecond_system::prelude::*;
 
 mod agent;
 mod archipelago;
-mod bounding_box;
+mod utils;
 mod character;
 mod collider;
-mod contour;
 #[cfg(feature = "debug_draw")]
 pub mod debug_draw;
-mod detail_mesh;
-mod heightfields;
+#[cfg(feature = "debug_draw")]
+use debug_draw::*;
 mod math;
-mod mesher;
-mod nav_mesh;
-mod navigation;
-mod regions;
+mod nav_ray_cast;
 mod tile;
-mod tiles;
 
+mod path_finding;
 use agent::*;
 use archipelago::*;
 
-use bounding_box::Bounding;
 use character::*;
 use collider::*;
-use contour::build_contours;
 use nav_mesh::*;
-use navigation::*;
+use nav_ray_cast::*;
 use tile::*;
+use path_finding::*;
 
 use std::sync::Arc;
 
@@ -40,14 +35,7 @@ use avian3d::{
     prelude::*,
 };
 use bevy::{
-    asset::RenderAssetUsages,
-    ecs::entity::EntityHashMap,
-    input::common_conditions::*,
-    math::bounding::Aabb3d,
-    platform::collections::HashSet,
-    prelude::*,
-    render::mesh::{Indices, PrimitiveTopology},
-    tasks::{AsyncComputeTaskPool, futures_lite::future},
+    color::palettes::tailwind, ecs::entity::EntityHashMap, math::bounding::{Aabb3d, RayCast3d}, platform::collections::HashSet, prelude::*, tasks::{futures_lite::future, AsyncComputeTaskPool}
 };
 
 
@@ -57,8 +45,7 @@ pub mod prelude {
     pub use crate::{RavenPlugin, agent::*, archipelago::*, character::*, collider::*};
 }
 
-const FLAG_BORDER_VERTEX: u32 = 0x10000;
-const MASK_CONTOUR_REGION: u32 = 0xffff; // Masks out the above value.
+
 
 pub struct RavenPlugin;
 
@@ -82,10 +69,10 @@ impl Plugin for RavenPlugin {
                 PostUpdate,
                 (
                     update_navmesh_affectors,
-                    //(add_agents_to_archipelago, add_characters_to_archipelago),
+                    (add_agents_to_archipelago, add_characters_to_archipelago),
                     start_tile_build_tasks,
                     update_tile_build_tasks,
-                    navigation::update_navigation
+                    update_navigation
                     //navigation::update_navigation.run_if(input_pressed(KeyCode::Space))
                 )
                     .chain()
@@ -100,12 +87,35 @@ impl Plugin for RavenPlugin {
             .register_type::<TileAffectors>()
             .register_type::<Tile>()
             .register_type::<Handle<NavigationMesh>>()
-            .register_type::<Bounding>()
             .register_type::<TileNavMesh>()
             .register_type::<Archipelago>()
             .register_type::<archipelago::TileLookup>()
             .register_type::<archipelago::ArchipelagoAgents>()
             .register_type::<archipelago::ArchipelagoCharacters>();
+    }
+}
+
+pub fn update_navigation(
+    mut pathing_results: ResMut<PathingResults>,
+    mut arch_query: Query<&ArchipelagoAgents, With<Archipelago>>,
+    agent_query: Query<(&GlobalTransform, &AgentState), With<Agent>>,
+    mut nav_mesh_cast: NavRayCast,
+    #[cfg(feature = "debug_draw")]
+    mut gizmos: Gizmos<RavenGizmos>,
+) {
+    pathing_results.clear();
+
+    for archipelago_agents in arch_query.iter_mut() {
+        for agent_entity in archipelago_agents.iter() {            
+            if let Ok((agent_transform, _agent_state)) = agent_query.get(agent_entity) {
+                let point = agent_transform.translation();
+                let ray = RayCast3d::new(point, Dir3::NEG_Y, 2.);
+                if let Some((entity, hit)) = nav_mesh_cast.cast_ray(ray) {
+                    #[cfg(feature = "debug_draw")]
+                    gizmos.line(point, hit.point, tailwind::FUCHSIA_500);
+                }
+            }
+        }
     }
 }
 
@@ -140,84 +150,6 @@ fn add_characters_to_archipelago(
 }
 
 ///
-fn archipelago_changed(
-    mut commands: Commands,
-    mut query: Query<
-        (
-            Entity,
-            &Archipelago,
-            &ArchipelagoTiles,
-            &mut ActiveGenerationTasks,
-            &mut TileLookup,
-            &mut DirtyTiles,
-        ),
-        (Or<(Changed<Transform>, Changed<Archipelago>)>,),
-    >,
-    mut collider_query: Query<
-        Entity,
-        (With<Collider>, With<GlobalTransform>, With<NavMeshAffector>),
-    >,
-) {
-    for (e, arch, tiles, mut tasks, mut lookup, mut dirty) in query.iter_mut() {
-        // clear any existing tiles
-        for tile_e in tiles.iter() {
-            commands.entity(tile_e).despawn();
-        }
-        tasks.clear();
-        lookup.clear();
-        dirty.clear();
-
-        // setup bounding box
-        commands
-            .entity(e)
-            .insert(Bounding(Aabb3d::new(Vec3A::ZERO, arch.world_half_extents)));
-
-        // create islands
-        let title_size = arch.get_tile_size();
-        let half_tile_size = title_size * 0.5;
-
-        let mut x_f = -arch.world_half_extents.x;
-        let mut x_i = 0;
-        let mut z_f = -arch.world_half_extents.z;
-        let mut z_i = 0;
-
-        while z_f < arch.world_half_extents.z {
-            while x_f < arch.world_half_extents.x {
-                let tile = UVec2::new(x_i, z_i);
-                let translation = Vec3::new(x_f + half_tile_size, 0., z_f + half_tile_size);
-                let tile_half_extends =
-                    Vec3::new(half_tile_size, arch.world_half_extents.y, half_tile_size);
-
-                let tile_id = commands
-                    .spawn((
-                        Name::new(format!("Tile ({},{})", tile.x, tile.y)),
-                        Tile(tile),
-                        Bounding(Aabb3d::new(Vec3::ZERO, tile_half_extends)),
-                        Transform::from_translation(translation),
-                        TileArchipelago(e),
-                        ChildOf(e), // duplicated with TileArchipelago, but may have more children in the future
-                    ))
-                    .id();
-                lookup.insert(tile, tile_id);
-                dirty.insert(tile);
-
-                x_f += title_size;
-                x_i += 1;
-            }
-            x_f = -arch.world_half_extents.x;
-            x_i = 0;
-
-            z_f += title_size;
-            z_i += 1;
-        }
-
-        // Hack: Since we need to update TileAffectors for any existing NavMeshAffectors, we add a marker component to all NavMeshAffectors
-        // to trigger the update, would be nice mark Colliders as changed, but dont have easy way to do that
-        for e in collider_query.iter_mut() {
-            commands.entity(e).insert(UpdateTileAffectors);
-        }
-    }
-}
 
 #[expect(clippy::type_complexity)]
 fn update_navmesh_affectors(
@@ -299,6 +231,85 @@ fn update_navmesh_affectors(
             if has_update {
                 commands.entity(e).remove::<UpdateTileAffectors>();
             }
+        }
+    }
+}
+
+fn archipelago_changed(
+    mut commands: Commands,
+    mut query: Query<
+        (
+            Entity,
+            &Archipelago,
+            &ArchipelagoTiles,
+            &mut ActiveGenerationTasks,
+            &mut TileLookup,
+            &mut DirtyTiles,
+        ),
+        (Or<(Changed<Transform>, Changed<Archipelago>)>,),
+    >,
+    mut collider_query: Query<
+        Entity,
+        (With<Collider>, With<GlobalTransform>, With<NavMeshAffector>),
+    >,
+) {
+    for (e, arch, tiles, mut tasks, mut lookup, mut dirty) in query.iter_mut() {
+        // clear any existing tiles
+        for tile_e in tiles.iter() {
+            commands.entity(tile_e).despawn();
+        }
+        tasks.clear();
+        lookup.clear();
+        dirty.clear();
+
+        // setup bounding box
+        commands
+            .entity(e)
+            .insert(ArchipelagoAabb(Aabb3d::new(Vec3A::ZERO, arch.world_half_extents)));
+
+        // create islands
+        let title_size = arch.get_tile_size();
+        let half_tile_size = title_size * 0.5;
+
+        let mut x_f = -arch.world_half_extents.x;
+        let mut x_i = 0;
+        let mut z_f = -arch.world_half_extents.z;
+        let mut z_i = 0;
+
+        while z_f < arch.world_half_extents.z {
+            while x_f < arch.world_half_extents.x {
+                let tile = UVec2::new(x_i, z_i);
+                let translation = Vec3::new(x_f + half_tile_size, 0., z_f + half_tile_size);
+                let tile_half_extends =
+                    Vec3::new(half_tile_size, arch.world_half_extents.y, half_tile_size);
+
+                let tile_id = commands
+                    .spawn((
+                        Name::new(format!("Tile ({},{})", tile.x, tile.y)),
+                        Tile(tile),
+                        TileAabb(Aabb3d::new(Vec3::ZERO, tile_half_extends)),
+                        Transform::from_translation(translation),
+                        TileArchipelago(e),
+                        ChildOf(e), // duplicated with TileArchipelago, but may have more children in the future
+                    ))
+                    .id();
+                lookup.insert(tile, tile_id);
+                dirty.insert(tile);
+
+                x_f += title_size;
+                x_i += 1;
+            }
+            x_f = -arch.world_half_extents.x;
+            x_i = 0;
+
+            z_f += title_size;
+            z_i += 1;
+        }
+
+        // Hack: Since we need to update TileAffectors for any existing NavMeshAffectors, we add a marker component to all NavMeshAffectors
+        // to trigger the update, would be nice mark Colliders as changed, but dont have easy way to do that
+        for e in collider_query.iter_mut() {
+            commands.entity(e).insert(UpdateTileAffectors);
         }
     }
 }
@@ -391,6 +402,7 @@ fn start_tile_build_tasks(
     }
 }
 
+
 /// Checks status of tile builds
 fn update_tile_build_tasks(
     mut commands: Commands,
@@ -398,17 +410,21 @@ fn update_tile_build_tasks(
     mut nav_meshes: ResMut<Assets<NavigationMesh>>,
     mut _meshes: ResMut<Assets<Mesh>>,
     mut _materials: ResMut<Assets<StandardMaterial>>,
+    mut changed_tiles: Local<Vec<Entity>>,
 ) {
     for mut tasks in archipelago_query.iter_mut() {
         // check active tasks, canceling if not current
         tasks.0.retain_mut(|job| {
             if let Some(result) = future::block_on(future::poll_once(&mut job.task)) {
                 match result {
-                    Ok((nav_mesh, _mesh)) => {
-                        let nav_mesh_handle = nav_meshes.add(nav_mesh);                                            
+                    Ok((nav_mesh, aabb, mesh)) => {
+                        let nav_mesh_handle = nav_meshes.add(nav_mesh);  
+                        changed_tiles.push(job.entity);
+                                      
                         commands
                             .entity(job.entity)
-                            .insert(TileNavMesh(nav_mesh_handle));
+                            .insert(TileNavMesh(nav_mesh_handle))
+                            .insert(TileMeshAabb(aabb));
                             //.insert(Mesh3d(meshes.add(mesh)))
                             // .insert(MeshMaterial3d(materials.add(StandardMaterial {
                             //     base_color: Color::WHITE,
@@ -421,7 +437,9 @@ fn update_tile_build_tasks(
                     Err(err) => {
                         warn!("Failed to generate oxidized_navigation tile: {err:?}");
                         // remove existing nav mesh if any
-                        commands.entity(job.entity).remove::<TileNavMesh>();
+                        commands.entity(job.entity)
+                            .remove::<TileNavMesh>()
+                            .remove::<TileMeshAabb>();
                     }
                 }                
                 return false;
@@ -429,6 +447,13 @@ fn update_tile_build_tasks(
             true
         });
     }
+
+    // rebuild links for changed tiles
+    for tile_entity in changed_tiles.drain(..) {
+        // TODO: 
+    }
+    
+
 }
 
 /// Update the tiles when the NavMeshAffector is removed.
@@ -458,12 +483,3 @@ fn handle_removed_affectors(
     removed.clear();
 }
 
-fn get_neighbour_index(tile_size: usize, index: usize, dir: usize) -> usize {
-    match dir {
-        0 => index - 1,
-        1 => index + tile_size,
-        2 => index + 1,
-        3 => index - tile_size,
-        _ => panic!("Not a valid direction"),
-    }
-}

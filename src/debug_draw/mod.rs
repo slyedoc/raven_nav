@@ -7,7 +7,7 @@ use bevy::{
     render::view::RenderLayers,
 };
 
-use crate::{Bounding, archipelago::*, nav_mesh::*, tile::*};
+use crate::{archipelago::*, nav_mesh::*, tile::*};
 
 #[derive(Default)]
 pub struct RavenDebugPlugin {
@@ -79,7 +79,7 @@ impl Default for RavenGizmos {
 // }
 
 fn draw_arhipelago_bounds(
-    archipelago_query: Query<(&GlobalTransform, &Bounding), With<Archipelago>>,
+    archipelago_query: Query<(&GlobalTransform, &ArchipelagoAabb), With<Archipelago>>,
     mut gizmos: Gizmos<RavenGizmos>,
     store: Res<GizmoConfigStore>,
 ) {
@@ -92,7 +92,7 @@ fn draw_arhipelago_bounds(
 }
 
 fn draw_tile_bounds(
-    island_query: Query<(&GlobalTransform, &Bounding), With<Tile>>,
+    island_query: Query<(&GlobalTransform, &TileMeshAabb), With<Tile>>,
     mut gizmos: Gizmos<RavenGizmos>,
     store: Res<GizmoConfigStore>,
 ) {

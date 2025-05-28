@@ -10,8 +10,7 @@ use bevy::log::info_span;
 use crate::{
     archipelago::Archipelago,
     get_neighbour_index,
-    heightfields::OpenTile,
-    mesher::{PolyMesh, VERTICES_IN_TRIANGLE},
+    tile::{voxelization::OpenTile, mesher::{PolyMesh, VERTICES_IN_TRIANGLE}},
 };
 
 #[derive(Debug)]
