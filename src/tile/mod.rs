@@ -85,8 +85,7 @@ pub(crate) async fn build_tile(
     regions::build_regions(&mut open_tile, &archipelago);
     let contour_set = contour::build_contours(&open_tile, &archipelago);
     let poly_tile = mesher::build_poly_mesh(contour_set, &archipelago, &open_tile);
-    let nav_mesh_tile = build_nav_mesh_tile(poly_tile.clone(), &archipelago);
-    let pre_nav_mesh = build_pre_navigation_mesh(nav_mesh_tile);
+    let pre_nav_mesh = build_pre_nav_mesh_tile(poly_tile.clone(), &archipelago);
     let (nav_mesh, aabb) = build_nav_mesh(&pre_nav_mesh)?;
     let mesh = build_mesh(poly_tile, &archipelago);
 
@@ -151,24 +150,6 @@ fn build_mesh(poly_mesh: PolyMesh, archipelago: &Archipelago) -> Mesh {
     mesh
 }
 
-fn build_pre_navigation_mesh(tile: NavMeshTile) -> PreNavigationMesh {
-    PreNavigationMesh {
-        vertices: tile.vertices,
-        polygons: tile
-            .polygons
-            .iter()
-            .map(|polygon| {
-                polygon
-                    .indices
-                    .iter()
-                    .copied()
-                    .map(|i| i as usize)
-                    .collect()
-            })
-            .collect(),
-        polygon_type_indices: vec![0; tile.polygons.len()],
-    }
-}
 
 pub fn build_nav_mesh(
     mesh: &PreNavigationMesh,
@@ -176,10 +157,10 @@ pub fn build_nav_mesh(
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::build_nav_mesh_tile").entered();
 
-    /// Ensures required invariants of the navigation mesh, and computes
-    /// additional derived properties to produce and optimized and validated
-    /// navigation mesh. Returns an error if the navigation mesh is invalid in
-    /// some way.
+    // Ensures required invariants of the navigation mesh, and computes
+    // additional derived properties to produce and optimized and validated
+    // navigation mesh. Returns an error if the navigation mesh is invalid in
+    // some way.
     if mesh.polygons.len() != mesh.polygon_type_indices.len() {
         return Err(ValidationError::TypeIndicesHaveWrongLength(
             mesh.polygons.len(),
@@ -425,16 +406,7 @@ pub struct Polygon {
     pub links: SmallVec<[Link; VERTICES_IN_TRIANGLE]>, // This becomes a mess memory wise with a ton of different small objects around.
 }
 
-/// A single nav-mesh tile.
-#[derive(Debug, Clone, PartialEq)]
-pub struct NavMeshTile {
-    /// Vertices in world space.
-    pub vertices: Vec<Vec3>,
-    // Polygons make up a form of graph, linking to other polygons (which could be on another mesh)
-    pub polygons: Vec<Polygon>,
-    pub areas: Vec<Area>,
-    pub edges: Vec<[EdgeConnection; VERTICES_IN_TRIANGLE]>,
-}
+
 
 pub fn get_neighbour_index(tile_size: usize, index: usize, dir: usize) -> usize {
     match dir {

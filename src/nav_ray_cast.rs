@@ -60,8 +60,7 @@ impl<'w, 's> NavRayCast<'w, 's> {
     pub fn cast_ray(&mut self, ray: RayCast3d) -> Option<&(Entity, RayNavHit)> {
         self.hits.clear();
         self.output.clear();
-
-        info!("Casting ray: {:?}", ray);
+        
         #[cfg(feature = "debug_draw")]
         self.gizmos.line(
             ray.origin.into(),
@@ -92,8 +91,7 @@ impl<'w, 's> NavRayCast<'w, 's> {
             let Ok((tile_nav_mesh, transform)) = self.tile_query.get(*entity) else {
                 return; 
             };
-            
-            let ray = ray.to_space(transform);
+                        
             // Is it even possible the mesh could be closer than the current best?
             if *aabb_near > nearest_blocking_hit {
                 return;
@@ -115,6 +113,7 @@ impl<'w, 's> NavRayCast<'w, 's> {
             //     continue;
             // };
 
+            let ray = ray.to_space(transform);
             // test vs poly boxs
             for poly in &mesh.polygons {
                 if let Some(distance) = ray.aabb_intersection_at(&poly.bounds) {

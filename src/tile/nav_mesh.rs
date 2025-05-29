@@ -5,7 +5,7 @@ use bevy::{
 };
 use thiserror::Error;
 
-use crate::{archipelago::Archipelago, tile::{mesher::{EdgeConnection, PolyMesh}, Polygon, Link, NavMeshTile}};
+use crate::{archipelago::Archipelago, tile::{mesher::{EdgeConnection, PolyMesh}, Polygon, Link}};
 
 /// A navigation mesh.
 ///
@@ -143,7 +143,7 @@ impl ValidPolygon {
 
 
 
-pub fn build_nav_mesh_tile(poly_mesh: PolyMesh, archipelago: &Archipelago) -> NavMeshTile {
+pub fn build_pre_nav_mesh_tile(poly_mesh: PolyMesh, archipelago: &Archipelago) -> PreNavigationMesh {
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::create_nav_mesh_tile_from_poly_mesh").entered();
 
@@ -186,10 +186,27 @@ pub fn build_nav_mesh_tile(poly_mesh: PolyMesh, archipelago: &Archipelago) -> Na
         })
         .collect();
 
-    NavMeshTile {
-        vertices,
-        edges: poly_mesh.edges,
-        polygons,
-        areas: poly_mesh.areas,
+    // let tile = NavMeshTile {
+    //     vertices,
+    //     edges: poly_mesh.edges,
+    //     polygons,
+    //     areas: poly_mesh.areas,
+    // };
+
+
+    PreNavigationMesh {
+        vertices: vertices,
+        polygons: polygons
+            .iter()
+            .map(|polygon| {
+                polygon
+                    .indices
+                    .iter()
+                    .copied()
+                    .map(|i| i as usize)
+                    .collect()
+            })
+            .collect(),
+        polygon_type_indices: vec![0; polygons.len()],
     }
 }
