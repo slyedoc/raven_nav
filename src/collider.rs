@@ -18,8 +18,8 @@ pub struct Area(pub u16);
 #[reflect(Component)]
 pub struct UpdateTileAffectors;
 
-// Rest of this file is utility functions for converting colliders to triangles
-
+ // Rest of this file is utility functions for converting colliders to triangles
+// TODO: convert GeometryCollection, HeightFieldCollection, HeightFieldCollection to single type with enum
 
 pub enum GeometryResult<'a> {
     Compound(Vec<(Isometry<f32>, GeometryResult<'a>)>),
@@ -32,12 +32,6 @@ impl From<GeometryToConvert> for GeometryResult<'_> {
     fn from(value: GeometryToConvert) -> Self {
         GeometryResult::GeometryToConvert(value)
     }
-}
-
-pub struct GeometryCollection {
-    pub transform: GlobalTransform,
-    pub geometry_to_convert: GeometryToConvert,
-    pub area: Option<Area>,
 }
 
 pub enum ColliderType {
@@ -54,6 +48,14 @@ pub enum GeometryToConvert {
     Collider(ColliderType),
     ParryTriMesh(Box<[Point3<f32>]>, Box<[[u32; 3]]>),
 }
+
+
+pub struct GeometryCollection {
+    pub transform: GlobalTransform,
+    pub geometry_to_convert: GeometryToConvert,
+    pub area: Option<Area>,
+}
+
 
 pub(super) struct TriangleCollection {
     pub(super) transform: GlobalTransform,
@@ -272,4 +274,25 @@ pub fn get_geometry_type(collider: TypedShape) -> GeometryResult {
             GeometryResult::Unsupported
         }
     }
+}
+
+pub(crate) fn convert_geometry(geometry_collections: Vec<GeometryCollection>) -> Vec<TriangleCollection> {
+    #[cfg(feature = "trace")]
+    let _span = info_span!("raven::convert_geometry").entered();
+    geometry_collections
+        .into_iter()
+        .map(|geometry_collection| TriangleCollection {
+            transform: geometry_collection.transform,
+            triangles: match geometry_collection.geometry_to_convert {
+                GeometryToConvert::Collider(collider) => {
+                    let triangles = Triangles::default();
+                    rasterize_collider_inner(collider, triangles)
+                }
+                GeometryToConvert::ParryTriMesh(vertices, triangles) => {
+                    Triangles::TriMesh(vertices.into_iter().map(Vec3::from).collect(), triangles)
+                }
+            },
+            area: geometry_collection.area,
+        })
+        .collect()
 }

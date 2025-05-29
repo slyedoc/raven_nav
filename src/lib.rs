@@ -6,11 +6,11 @@ use bevy_simple_subsecond_system::prelude::*;
 
 mod agent;
 mod archipelago;
-mod utils;
 mod character;
 mod collider;
 #[cfg(feature = "debug_draw")]
 pub mod debug_draw;
+mod utils;
 #[cfg(feature = "debug_draw")]
 use debug_draw::*;
 mod math;
@@ -25,27 +25,24 @@ use character::*;
 use collider::*;
 use nav_mesh::*;
 use nav_ray_cast::*;
-use tile::*;
 use path_finding::*;
+use tile::*;
 
-use std::sync::Arc;
+use std::{process::Child, sync::Arc};
 
 use avian3d::{
     parry::{math::Isometry, na::Vector3, shape::HeightField},
     prelude::*,
 };
 use bevy::{
-    color::palettes::tailwind, ecs::entity::EntityHashMap, math::bounding::{Aabb3d, RayCast3d}, platform::collections::HashSet, prelude::*, tasks::{futures_lite::future, AsyncComputeTaskPool}
+    color::palettes::tailwind, ecs::entity::EntityHashMap, log::tracing_subscriber::filter::combinator::Not, math::bounding::{Aabb3d, RayCast3d}, pbr::NotShadowCaster, platform::collections::HashSet, prelude::*, tasks::{futures_lite::future, AsyncComputeTaskPool}
 };
-
 
 pub mod prelude {
     #[cfg(feature = "debug_draw")]
     pub use crate::debug_draw::*;
     pub use crate::{RavenPlugin, agent::*, archipelago::*, character::*, collider::*};
 }
-
-
 
 pub struct RavenPlugin;
 
@@ -72,8 +69,7 @@ impl Plugin for RavenPlugin {
                     (add_agents_to_archipelago, add_characters_to_archipelago),
                     start_tile_build_tasks,
                     update_tile_build_tasks,
-                    update_navigation
-                    //navigation::update_navigation.run_if(input_pressed(KeyCode::Space))
+                    update_navigation, //navigation::update_navigation.run_if(input_pressed(KeyCode::Space))
                 )
                     .chain()
                     .after(TransformSystem::TransformPropagate),
@@ -100,13 +96,12 @@ pub fn update_navigation(
     mut arch_query: Query<&ArchipelagoAgents, With<Archipelago>>,
     agent_query: Query<(&GlobalTransform, &AgentState), With<Agent>>,
     mut nav_mesh_cast: NavRayCast,
-    #[cfg(feature = "debug_draw")]
-    mut gizmos: Gizmos<RavenGizmos>,
+    #[cfg(feature = "debug_draw")] mut gizmos: Gizmos<RavenGizmos>,
 ) {
     pathing_results.clear();
 
     for archipelago_agents in arch_query.iter_mut() {
-        for agent_entity in archipelago_agents.iter() {            
+        for agent_entity in archipelago_agents.iter() {
             if let Ok((agent_transform, _agent_state)) = agent_query.get(agent_entity) {
                 let point = agent_transform.translation();
                 let ray = RayCast3d::new(point, Dir3::NEG_Y, 2.);
@@ -263,9 +258,10 @@ fn archipelago_changed(
         dirty.clear();
 
         // setup bounding box
-        commands
-            .entity(e)
-            .insert(ArchipelagoAabb(Aabb3d::new(Vec3A::ZERO, arch.world_half_extents)));
+        commands.entity(e).insert(ArchipelagoAabb(Aabb3d::new(
+            Vec3A::ZERO,
+            arch.world_half_extents,
+        )));
 
         // create islands
         let title_size = arch.get_tile_size();
@@ -402,14 +398,13 @@ fn start_tile_build_tasks(
     }
 }
 
-
 /// Checks status of tile builds
 fn update_tile_build_tasks(
     mut commands: Commands,
     mut archipelago_query: Query<&mut ActiveGenerationTasks, With<Archipelago>>,
     mut nav_meshes: ResMut<Assets<NavigationMesh>>,
-    mut _meshes: ResMut<Assets<Mesh>>,
-    mut _materials: ResMut<Assets<StandardMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     mut changed_tiles: Local<Vec<Entity>>,
 ) {
     for mut tasks in archipelago_query.iter_mut() {
@@ -418,30 +413,37 @@ fn update_tile_build_tasks(
             if let Some(result) = future::block_on(future::poll_once(&mut job.task)) {
                 match result {
                     Ok((nav_mesh, aabb, mesh)) => {
-                        let nav_mesh_handle = nav_meshes.add(nav_mesh);  
                         changed_tiles.push(job.entity);
-                                      
                         commands
                             .entity(job.entity)
-                            .insert(TileNavMesh(nav_mesh_handle))
+                            .insert(TileNavMesh(nav_meshes.add(nav_mesh)))
                             .insert(TileMeshAabb(aabb));
-                            //.insert(Mesh3d(meshes.add(mesh)))
-                            // .insert(MeshMaterial3d(materials.add(StandardMaterial {
-                            //     base_color: Color::WHITE,
-                            //     perceptual_roughness: 0.5,
-                            //     metallic: 0.0,
-                            //     ..default()
-                            // })));
-                            
+
+                        // view mesh, for debugging
+                        //#[cfg(feature = "view_mesh")]
+                        commands.spawn((
+                            ChildOf(job.entity),
+                            Mesh3d(meshes.add(mesh)),
+                            MeshMaterial3d(materials.add(StandardMaterial {
+                                base_color: tailwind::BLUE_500.with_alpha(0.3).into(),
+                                unlit: true,
+                                alpha_mode: AlphaMode::Blend,
+                                ..default()
+                            })),
+                            NotShadowCaster,                            
+                            Transform::from_xyz(0.0, 0.1, 0.0),
+                        ));
                     }
                     Err(err) => {
                         warn!("Failed to generate oxidized_navigation tile: {err:?}");
                         // remove existing nav mesh if any
-                        commands.entity(job.entity)
+                        commands
+                            .entity(job.entity)
                             .remove::<TileNavMesh>()
-                            .remove::<TileMeshAabb>();
+                            .remove::<TileMeshAabb>()
+                            .remove::<Children>(); // should delete view mesh
                     }
-                }                
+                }
                 return false;
             }
             true
@@ -450,10 +452,8 @@ fn update_tile_build_tasks(
 
     // rebuild links for changed tiles
     for tile_entity in changed_tiles.drain(..) {
-        // TODO: 
+        // TODO:
     }
-    
-
 }
 
 /// Update the tiles when the NavMeshAffector is removed.
@@ -482,4 +482,3 @@ fn handle_removed_affectors(
     }
     removed.clear();
 }
-

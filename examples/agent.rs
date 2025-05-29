@@ -17,12 +17,11 @@ fn main() {
                 ..default()
             }),
             PhysicsPlugins::default(),
-            RavenPlugin,    
-            RavenDebugPlugin::default(),        
+            RavenPlugin,
+            RavenDebugPlugin::default(),
             ExampleCommonPlugin,
         ))
-        
-        .add_systems(Startup, setup)        
+        .add_systems(Startup, setup)
         .run();
 }
 
@@ -51,22 +50,94 @@ fn setup(
     ));
 
     // spawn default archipelago for now
-    let a1 = commands.spawn((
-        Name::new("Archipelago"),
-        // This creates the archipelago which will generate a nav-mesh
-        Archipelago::new(0.5, 1.9, Vec3::splat(50.0)).with_traversible_slope(40.0_f32.to_radians()),
-        ArchipelagoMovement, // helper to move the archipelago around with Arrow Keys to see regeneration
-    )).id();
+    let a1 = commands
+        .spawn((
+            Name::new("Archipelago"),
+            // This creates the archipelago which will generate a nav-mesh
+            Archipelago::new(0.5, 1.9, Vec3::splat(60.0))
+                .with_traversible_slope(40.0_f32),
+            ArchipelagoMovement, // helper to move the archipelago around with Arrow Keys to see regeneration
+        ))
+        .id();
 
     commands.spawn((
         Name::new("Ground"),
-        Mesh3d(meshes.add(Plane3d::new(Vec3::Y, vec2(10.0, 10.0)))),
+        Mesh3d(meshes.add(Plane3d::new(Vec3::Y, vec2(30.0, 30.0)))),
         MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
         Transform::default(),
         ColliderConstructor::TrimeshFromMesh,
         RigidBody::Static,
         NavMeshAffector::default(), // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
     ));
+
+    let gray = materials.add(StandardMaterial {
+        base_color: tailwind::GRAY_300.into(),
+        metallic: 0.0,
+        perceptual_roughness: 0.5,
+        ..default()
+    });
+
+    {
+        // construct a walkway with ramps
+        // anything more than this and going to blender
+        let walkway_width = 25.0f32;
+        let walkway_depth = 8.0f32;
+        let walkway_height = 5.0f32;
+        let ramp_length = 10.0f32;
+        let ramp_height = walkway_height;
+        let ramp_width = 5.0f32;
+        let ramp_thickness = 0.2f32;
+        let ramp_angle = (ramp_height / ramp_length).atan();
+
+        let ramp_center_y = walkway_height - ramp_thickness / 2.0 - (ramp_length / 2.0) * ramp_angle.sin();
+        commands
+            .spawn((
+                Name::new("Walkway"),
+                Mesh3d(meshes.add(Plane3d::new(Vec3::Y, vec2(walkway_width, walkway_depth)))),
+                MeshMaterial3d(gray.clone()),
+                Transform::from_xyz(0.0, walkway_height - 0.2, 0.0),
+                ColliderConstructor::TrimeshFromMesh,
+                RigidBody::Static,
+                NavMeshAffector::default(),
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Name::new("Ramp Right"),
+                    Mesh3d(meshes.add(Cuboid::new(ramp_width, ramp_thickness, ramp_length))),
+                    MeshMaterial3d(gray.clone()),
+                    Transform {
+                        translation: Vec3::new(
+                            10.0,
+                            -ramp_center_y + 0.3,
+                            3.3 +  walkway_depth / 2.  + ramp_length / 2.0,
+                        ),
+                        rotation: Quat::from_rotation_x(ramp_angle),
+                        ..Default::default()
+                    },
+                    ColliderConstructor::TrimeshFromMesh,
+                    RigidBody::Static,
+                    NavMeshAffector::default(),
+                ));
+
+                parent.spawn((
+                    Name::new("Ramp Left"),
+                    Mesh3d(meshes.add(Cuboid::new(ramp_width, ramp_thickness, ramp_length))),
+                    MeshMaterial3d(gray.clone()),
+                    Transform {
+                        translation: Vec3::new(
+                            -10.0,
+                            -ramp_center_y + 0.3,
+                            -3.3 - walkway_depth / 2. - ramp_length / 2.0,
+                        ),
+                        rotation: Quat::from_rotation_x(-ramp_angle),
+                        ..Default::default()
+                    },
+                    ColliderConstructor::TrimeshFromMesh,
+                    RigidBody::Static,
+                    NavMeshAffector::default(),
+                ));
+            });
+    }
 
     commands.spawn((
         Name::new("Cube"),
@@ -85,6 +156,3 @@ fn setup(
         Transform::from_xyz(0.0, 2.0, 2.0),
     ));
 }
-
-
-

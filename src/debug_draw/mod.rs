@@ -20,7 +20,7 @@ impl Plugin for RavenDebugPlugin {
         app.insert_gizmo_config(
             RavenGizmos::default(),
             GizmoConfig {
-                depth_bias: -0.1,
+                depth_bias: -0.01,
                 render_layers: self.render_layer.clone(),
                 ..Default::default()
             },
@@ -41,6 +41,7 @@ impl Plugin for RavenDebugPlugin {
 
 #[derive(Reflect, GizmoConfigGroup)]
 pub struct RavenGizmos {
+    
     pub archipelago_bounds: Option<Color>,
     pub tile_bounds: Option<Color>,
     pub tile_polygons: Option<Color>,
@@ -52,7 +53,7 @@ impl Default for RavenGizmos {
         Self {
             archipelago_bounds: Some(tailwind::GRAY_300.with_alpha(0.5).into()),
             tile_bounds: Some(tailwind::RED_100.with_alpha(0.5).into()),
-            tile_polygons: Some(tailwind::GREEN_500.into()),
+            tile_polygons: None, //Some(tailwind::GREEN_500.into()),
             tile_edges: Some(tailwind::BLUE_500.into()),
         }
     }

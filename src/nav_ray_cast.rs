@@ -61,12 +61,12 @@ impl<'w, 's> NavRayCast<'w, 's> {
         self.hits.clear();
         self.output.clear();
         
-        #[cfg(feature = "debug_draw")]
-        self.gizmos.line(
-            ray.origin.into(),
-            ray.get_point(ray.max).into(),
-            tailwind::RED_500,
-        );
+        // #[cfg(feature = "debug_draw")]
+        // self.gizmos.line(
+        //     ray.origin.into(),
+        //     ray.get_point(ray.max).into(),
+        //     tailwind::RED_500,
+        // );
 
         // Check all entities to see if the ray intersects the AABB. Use this to build a short list
         // of entities that are in the path of the ray.
@@ -119,8 +119,8 @@ impl<'w, 's> NavRayCast<'w, 's> {
                 if let Some(distance) = ray.aabb_intersection_at(&poly.bounds) {
                     let d = FloatOrd(distance);
                     if d < nearest_blocking_hit {
-                        #[cfg(feature = "debug_draw")]
-                        self.gizmos.cuboid(aabb3d_transform(&poly.bounds.grow(Vec3::splat(0.1)), transform, ), tailwind::GREEN_300);
+                        // #[cfg(feature = "debug_draw")]
+                        // self.gizmos.cuboid(aabb3d_transform(&poly.bounds.grow(Vec3::splat(0.1)), transform, ), tailwind::GREEN_300);
 
                         let point = ray.get_point(distance);
                         // The ray does not intersect the mesh bounding box.

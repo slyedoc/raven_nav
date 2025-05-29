@@ -1,36 +1,259 @@
+use std::cmp::Ordering;
+
 use bevy::{
     math::bounding::Aabb3d,
-    platform::collections::HashSet,
+    platform::collections::{HashMap, HashSet},
     prelude::*,
 };
+use disjoint::DisjointSet;
 use thiserror::Error;
 
-use crate::{archipelago::Archipelago, tile::{mesher::{EdgeConnection, PolyMesh}, Polygon, Link}};
+use crate::{
+    archipelago::Archipelago,
+    tile::{
+        Link, NavPolygon,
+        mesher::{EdgeConnection, PolyMesh},
+    },
+    utils::Aabb3dExt,
+};
 
 /// A navigation mesh.
 ///
-#[derive(Clone)]
-pub struct PreNavigationMesh {
-    /// The vertices that make up the polygons.
-    pub vertices: Vec<Vec3>,
-    /// The polygons of the mesh. Polygons are indices to the `vertices` that
-    /// make up the polygon. Polygons must be convex, and oriented
-    /// counterclockwise (using the right hand rule). Polygons are assumed to be
-    /// not self-intersecting.
-    pub polygons: Vec<Vec<usize>>,
-    /// The type index of each polygon. This type index is translated into a real
-    /// [`crate::NodeType`] when assigned to an [`crate::Archipelago`]. Must be
-    /// the same length as [`Self::polygons`].
-    pub polygon_type_indices: Vec<usize>,
+
+pub fn build_nav_mesh(
+    poly_mesh: PolyMesh,
+    archipelago: &Archipelago,
+) -> Result<NavigationMesh, ValidationError> {
+    #[cfg(feature = "trace")]
+    let _span = info_span!("raven::build_nav_mesh").entered();
+
+    // Slight worry that the compiler won't optimize this but damn, it's cool.
+    let polygons: Vec<NavPolygon> = poly_mesh
+        .polygons
+        .into_iter()
+        .zip(poly_mesh.edges.iter())
+        .map(|(indices, edges)| {
+            // Pre build internal links.
+            let links = edges
+                .iter()
+                .enumerate()
+                .filter_map(|(i, edge)| {
+                    let EdgeConnection::Internal(neighbour_polygon) = edge else {
+                        return None;
+                    };
+                    Some(Link::Internal {
+                        edge: i as u8,
+                        neighbour_polygon: *neighbour_polygon,
+                    })
+                })
+                .collect();
+
+            NavPolygon { links, indices }
+        })
+        .collect();
+
+    let tile_origin = archipelago.get_tile_minimum_bound_with_border();
+    // Scale the vertices to tile space
+    let vertices: Vec<Vec3> = poly_mesh
+        .vertices
+        .iter()
+        .map(|vertex| {
+            Vec3::new(
+                tile_origin.x + vertex.x as f32 * archipelago.cell_width,
+                tile_origin.y + vertex.y as f32 * archipelago.cell_height,
+                tile_origin.z + vertex.z as f32 * archipelago.cell_width,
+            )
+        })
+        .collect();
+
+    let polygon_type_indices = vec![0; polygons.len()];
+    let mut region_sets = DisjointSet::with_len(polygons.len());
+    let mut connectivity_set = HashMap::new();
+    let polygons: Vec<Vec<usize>> = polygons
+        .iter()
+        .map(|polygon| {
+            polygon
+                .indices
+                .iter()
+                .copied()
+                .map(|i| i as usize)
+                .collect()
+        })
+        .collect();
+
+    // build connectivity and validate mesh
+    enum ConnectivityState {
+        Disconnected,
+        Boundary {
+            polygon: usize,
+            edge: usize,
+        },
+        Connected {
+            polygon_1: usize,
+            edge_1: usize,
+            polygon_2: usize,
+            edge_2: usize,
+        },
+    }
+
+    for (polygon_index, polygon) in polygons.iter().enumerate() {
+        if polygon.len() < 3 {
+            return Err(ValidationError::NotEnoughVerticesInPolygon(polygon_index));
+        }
+
+        for vertex_index in polygon {
+            if *vertex_index >= vertices.len() {
+                return Err(ValidationError::InvalidVertexIndexInPolygon(polygon_index));
+            }
+        }
+
+        for i in 0..polygon.len() {
+            let prev = polygon[if i == 0 { polygon.len() - 1 } else { i - 1 }];
+            let center = polygon[i];
+            let next = polygon[if i == polygon.len() - 1 { 0 } else { i + 1 }];
+
+            // Check if the edge is degenerate.
+
+            let edge = if center < next {
+                (center, next)
+            } else {
+                (next, center)
+            };
+            if edge.0 == edge.1 {
+                return Err(ValidationError::DegenerateEdgeInPolygon(polygon_index));
+            }
+
+            // Derive connectivity for the edge.
+
+            let state = connectivity_set
+                .entry(edge)
+                .or_insert(ConnectivityState::Disconnected);
+            match state {
+                ConnectivityState::Disconnected => {
+                    *state = ConnectivityState::Boundary {
+                        polygon: polygon_index,
+                        edge: i,
+                    };
+                }
+                &mut ConnectivityState::Boundary {
+                    polygon: polygon_1,
+                    edge: edge_1,
+                    ..
+                } => {
+                    *state = ConnectivityState::Connected {
+                        polygon_1,
+                        edge_1,
+                        polygon_2: polygon_index,
+                        edge_2: i,
+                    };
+                    region_sets.join(polygon_1, polygon_index);
+                }
+                ConnectivityState::Connected { .. } => {
+                    return Err(ValidationError::DoublyConnectedEdge(edge.0, edge.1));
+                }
+            }
+
+            // Check if the vertex is concave.
+            let a = vertices[prev].xz();
+            let b = vertices[center].xz();
+            let c = vertices[next].xz();
+
+            let left_edge = a - b;
+            let right_edge = c - b;
+
+            match right_edge.perp_dot(left_edge).partial_cmp(&0.0) {
+                Some(Ordering::Less) => {} // convex
+                // The right edge is parallel to the left edge, but they point in
+                // opposite directions.
+                Some(Ordering::Equal) if right_edge.dot(left_edge) < 0.0 => {}
+                // right_edge is to the left of the left_edge (or they are parallel
+                // and point in the same direciton), so the polygon is
+                // concave.
+                _ => return Err(ValidationError::ConcavePolygon(polygon_index)),
+            }
+        }
+    }
+
+    let mut region_to_normalized_region = HashMap::new();
+    let mut polygons = polygons
+        .iter()
+        .enumerate()
+        .map(|(polygon_index, polygon_vertices)| {
+            ValidPolygon {
+                bounds: Aabb3d::from_points(
+                    polygon_vertices.iter().map(|&vertex| vertices[vertex]),
+                )
+                .expect("Polygon must have at least one vertex"),
+                center: polygon_vertices.iter().map(|i| vertices[*i]).sum::<Vec3>()
+                    / polygon_vertices.len() as f32,
+                connectivity: vec![None; polygon_vertices.len()],
+                vertices: polygon_vertices.clone(),
+                region: {
+                    let region = region_sets.root_of(polygon_index);
+                    // Get around the borrow checker by deciding on the new normalized
+                    // region beforehand.
+                    let new_normalized_region = region_to_normalized_region.len();
+                    // Either lookup the existing normalized region or insert the next
+                    // unique index.
+                    *region_to_normalized_region
+                        .entry(region)
+                        .or_insert_with(|| new_normalized_region)
+                },
+                type_index: polygon_type_indices[polygon_index],
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let mut used_type_indices = HashSet::new();
+    polygons.iter().for_each(|polygon| {
+        used_type_indices.insert(polygon.type_index);
+    });
+
+    let mut boundary_edges = Vec::new();
+    for connectivity_state in connectivity_set.values() {
+        match connectivity_state {
+            ConnectivityState::Disconnected => panic!("Value is never stored"),
+            &ConnectivityState::Boundary { polygon, edge } => {
+                boundary_edges.push(MeshEdgeRef {
+                    edge_index: edge,
+                    polygon_index: polygon,
+                });
+            }
+            &ConnectivityState::Connected {
+                polygon_1,
+                edge_1,
+                polygon_2,
+                edge_2,
+            } => {
+                let edge = polygons[polygon_1].get_edge_indices(edge_1);
+                let edge_center = (vertices[edge.0] + vertices[edge.1]) / 2.0;
+                let travel_distances = (
+                    polygons[polygon_1].center.distance(edge_center),
+                    polygons[polygon_2].center.distance(edge_center),
+                );
+                polygons[polygon_1].connectivity[edge_1] = Some(Connectivity {
+                    polygon_index: polygon_2,
+                    travel_distances,
+                });
+                polygons[polygon_2].connectivity[edge_2] = Some(Connectivity {
+                    polygon_index: polygon_1,
+                    travel_distances: (travel_distances.1, travel_distances.0),
+                });
+            }
+        }
+    }
+
+    Ok(NavigationMesh {
+        polygons,
+        vertices,
+        boundary_edges,
+        used_type_indices,
+        //type_index_to_node_type: HashMap::new(),
+    })
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Error)]
 pub enum ValidationError {
-    /// Stores the number of polygons and the number of type indices.
-    #[error(
-        "The polygon type indices do not have the same length as the polygons. There are {0} polygons, but {1} type indices."
-    )]
-    TypeIndicesHaveWrongLength(usize, usize),
     /// Stores the index of the polygon.
     #[error("The polygon at index {0} is concave or has edges in clockwise order.")]
     ConcavePolygon(usize),
@@ -54,7 +277,6 @@ pub enum ValidationError {
 #[derive(Asset, TypePath, Debug)]
 #[allow(dead_code)]
 pub struct NavigationMesh {
-
     /// The vertices that make up the polygons.
     pub(crate) vertices: Vec<Vec3>,
     /// The polygons of the mesh.
@@ -138,75 +360,5 @@ impl ValidPolygon {
                 edge + 1
             }],
         )
-    }
-}
-
-
-
-pub fn build_pre_nav_mesh_tile(poly_mesh: PolyMesh, archipelago: &Archipelago) -> PreNavigationMesh {
-    #[cfg(feature = "trace")]
-    let _span = info_span!("raven::create_nav_mesh_tile_from_poly_mesh").entered();
-
-    // Slight worry that the compiler won't optimize this but damn, it's cool.
-    let polygons = poly_mesh
-        .polygons
-        .into_iter()
-        .zip(poly_mesh.edges.iter())
-        .map(|(indices, edges)| {
-            // Pre build internal links.
-            let links = edges
-                .iter()
-                .enumerate()
-                .filter_map(|(i, edge)| {
-                    let EdgeConnection::Internal(neighbour_polygon) = edge else {
-                        return None;
-                    };
-
-                    Some(Link::Internal {
-                        edge: i as u8,
-                        neighbour_polygon: *neighbour_polygon,
-                    })
-                })
-                .collect();
-
-            crate::tile::Polygon { links, indices }
-        })
-        .collect();
-
-    let tile_origin = archipelago.get_tile_minimum_bound_with_border();
-    let vertices = poly_mesh
-        .vertices
-        .iter()
-        .map(|vertex| {
-            Vec3::new(
-                tile_origin.x + vertex.x as f32 * archipelago.cell_width,
-                tile_origin.y + vertex.y as f32 * archipelago.cell_height,
-                tile_origin.z + vertex.z as f32 * archipelago.cell_width,
-            )
-        })
-        .collect();
-
-    // let tile = NavMeshTile {
-    //     vertices,
-    //     edges: poly_mesh.edges,
-    //     polygons,
-    //     areas: poly_mesh.areas,
-    // };
-
-
-    PreNavigationMesh {
-        vertices: vertices,
-        polygons: polygons
-            .iter()
-            .map(|polygon| {
-                polygon
-                    .indices
-                    .iter()
-                    .copied()
-                    .map(|i| i as usize)
-                    .collect()
-            })
-            .collect(),
-        polygon_type_indices: vec![0; polygons.len()],
     }
 }

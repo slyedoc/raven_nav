@@ -15,7 +15,8 @@ use std::num::{NonZeroU8, NonZeroU16};
     ArchipelagoTiles,
     TileLookup,
     DirtyTiles,
-    ActiveGenerationTasks
+    ActiveGenerationTasks,
+    Visibility // used for rendering mesh
 )]
 pub struct Archipelago {
     /// Extents of the world as measured from the world origin (0.0, 0.0) on the XZ-plane.
@@ -356,7 +357,7 @@ pub struct ArchipelagoAabb(pub Aabb3d);
 pub struct NavMeshGenerationJob {
     pub entity: Entity,
     // pub generation: u64,
-    pub task: Task<TileBakeResult>,
+    pub task: Task<TileBuildResult>,
 }
 
 #[derive(Clone, Reflect, Debug)]

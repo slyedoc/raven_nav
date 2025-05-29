@@ -29,6 +29,7 @@ default = [
     "bevy/dynamic_linking",    
 ] 
 hot = []
+view_mesh = []
 debug_draw = [
     "bevy/bevy_gizmos",
     "bevy/bevy_render",    
