@@ -15,7 +15,7 @@ impl Plugin for MoveWaymapPlugin {
 }
 
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Default, Reflect)]
-#[require(    
+#[require(
     Actions::<NavInputContext>,
 )]
 pub struct NavMovement;
@@ -31,13 +31,11 @@ fn default_binding(
 
     // // TODO: Shift doesnt work with this, find out why, upgrade to latest bevy_enhanced_input first though?
     // actions.bind::<EnableSprint>().to(KeyCode::ShiftLeft);
-    
+
     // Movement
     actions
         .bind::<Move>()
-        .to((
-            Cardinal::arrow_keys(),            
-        ))
+        .to((Cardinal::arrow_keys(),))
         // Don't trigger the action when the chord is active.
         .with_modifiers((
             //DeadZone::default(), // Apply non-uniform normalization to ensure consistent speed, otherwise diagonal movement will be faster.

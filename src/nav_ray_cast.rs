@@ -8,8 +8,8 @@ use raven_bvh::prelude::*;
 use strum::IntoEnumIterator;
 
 use crate::{
+    nav::{Nav, TileLookup},
     tile::{mesher::*, nav_mesh::*, *},
-    nav::{TileLookup, Nav},
 };
 use bevy::{
     ecs::system::{
@@ -106,7 +106,7 @@ pub struct RayNavHit {
 //                 if let Some(mut hit) =
 //                     ray.aabb_intersection_at(&aabb.grow(aabb_cast.aabb.half_size()))
 //                 {
-//                     hit /= dir_scale; // Convert back to world-space distance                                                 
+//                     hit /= dir_scale; // Convert back to world-space distance
 //                     aabb_hits_tx.send((FloatOrd(hit), e)).ok();
 //                 }
 //             });

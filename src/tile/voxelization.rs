@@ -4,7 +4,7 @@ use avian3d::parry::{bounding_volume::Aabb, math::Isometry, na::Point3};
 use bevy::{math::Vec3A, prelude::*};
 use smallvec::SmallVec;
 
-use crate::{Area, nav::Nav, collider::*};
+use crate::{Area, collider::*, nav::Nav};
 
 use super::get_neighbour_index;
 
@@ -51,8 +51,6 @@ pub struct OpenTile {
     pub(super) span_count: usize, // Total spans in all cells.
     pub(super) max_regions: u16,
 }
-
-
 
 pub(super) fn build_heightfield_tile(
     config: &Nav,
@@ -452,10 +450,7 @@ fn divide_polygon(
     }
 }
 
-pub fn build_open_heightfield_tile(
-    voxelized_tile: VoxelizedTile,
-    vox_settings: &Nav,
-) -> OpenTile {
+pub fn build_open_heightfield_tile(voxelized_tile: VoxelizedTile, vox_settings: &Nav) -> OpenTile {
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::build_open_heightfield_tile").entered();
 

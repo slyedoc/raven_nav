@@ -271,8 +271,6 @@ impl Nav {
     }
 }
 
-
-
 /// Managed list of agents in the waymap.
 #[derive(Component, Default, Debug, Reflect)]
 #[relationship_target(relationship = AgentWaymap)]

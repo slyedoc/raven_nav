@@ -8,8 +8,8 @@ use bevy::{
 };
 
 use crate::{
-    tile::{nav_mesh::*, *},
     nav::*,
+    tile::{nav_mesh::*, *},
 };
 
 #[derive(Default)]
@@ -60,9 +60,9 @@ impl Default for RavenGizmos {
         Self {
             waymap_bounds: Some(tailwind::GRAY_300.with_alpha(0.5).into()),
             tile_bounds: Some(tailwind::RED_500.with_alpha(0.5).into()),
-            tile_polygons: Some(tailwind::BLUE_500.into()),            
-            tile_internal_links: None, // Some(tailwind::YELLOW_500.into()),            
-            tile_external_links: Some(tailwind::YELLOW_500.into()),            
+            tile_polygons: Some(tailwind::BLUE_500.into()),
+            tile_internal_links: None, // Some(tailwind::YELLOW_500.into()),
+            tile_external_links: Some(tailwind::YELLOW_500.into()),
 
             show_view_mesh: true,
             view_mesh_color: tailwind::BLUE_300.with_alpha(0.5).into(),
@@ -129,7 +129,7 @@ fn draw_tiles(
                 let indices = &poly.indices;
                 for i in 0..indices.len() {
                     let a = tile.vertices[indices[i] as usize];
-                    let b = tile.vertices[indices[(i + 1) % indices.len()] as usize];                    
+                    let b = tile.vertices[indices[(i + 1) % indices.len()] as usize];
                     gizmos.line(trans.transform_point(a), trans.transform_point(b), color);
                 }
             }
@@ -138,19 +138,36 @@ fn draw_tiles(
                 // Only draw links that connect to a polygon with a greater index
                 // to avoid drawing the same link multiple times.
                 match link {
-                    Link::Internal { edge, neighbour_polygon: _ } => {
+                    Link::Internal {
+                        edge,
+                        neighbour_polygon: _,
+                    } => {
                         if let Some(color) = config.tile_internal_links {
-                             let a = tile.vertices[poly.indices[*edge as usize] as usize];
-                             gizmos.line(trans.transform_point(a), trans.transform_point(a + Vec3::Y * 0.2), color);
+                            let a = tile.vertices[poly.indices[*edge as usize] as usize];
+                            gizmos.line(
+                                trans.transform_point(a),
+                                trans.transform_point(a + Vec3::Y * 0.2),
+                                color,
+                            );
                         }
-                    },
-                    Link::External { edge, neighbour_polygon: _, direction: _, bound_min: _, bound_max: _ } => {
+                    }
+                    Link::External {
+                        edge,
+                        neighbour_polygon: _,
+                        direction: _,
+                        bound_min: _,
+                        bound_max: _,
+                    } => {
                         if let Some(color) = config.tile_external_links {
                             let a = tile.vertices[poly.indices[*edge as usize] as usize];
-                            gizmos.line(trans.transform_point(a), trans.transform_point(a + Vec3::Y * 0.2), color);
+                            gizmos.line(
+                                trans.transform_point(a),
+                                trans.transform_point(a + Vec3::Y * 0.2),
+                                color,
+                            );
                         }
-                    },
-                }   
+                    }
+                }
             }
         }
     }

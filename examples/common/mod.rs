@@ -16,7 +16,7 @@ use bevy::{
     asset::RenderAssetUsages,
     input::common_conditions::input_just_pressed,
     prelude::*,
-    render::mesh::{Indices, PrimitiveTopology},    
+    render::mesh::{Indices, PrimitiveTopology},
 };
 
 //// A plugin that adds common functionality for examples,
@@ -35,12 +35,15 @@ impl Plugin for ExampleCommonPlugin {
         .add_systems(
             Update,
             toggle_debug_draw.run_if(input_just_pressed(KeyCode::KeyN)),
-        )        
+        )
         .add_systems(Startup, setup_key_instructions);
     }
 }
 
-fn toggle_debug_draw(mut store: ResMut<GizmoConfigStore>, mut query: Query<&mut Visibility, With<TileViewMesh>>,) {
+fn toggle_debug_draw(
+    mut store: ResMut<GizmoConfigStore>,
+    mut query: Query<&mut Visibility, With<TileViewMesh>>,
+) {
     let (gizmo_config, config) = store.config_mut::<RavenGizmos>();
     gizmo_config.enabled = !gizmo_config.enabled;
 

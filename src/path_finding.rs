@@ -7,10 +7,11 @@ use raven_bvh::prelude::TlasCast;
 #[cfg(feature = "debug_draw")]
 use crate::debug_draw::*;
 
-
 ///! Module for querying the nav-mesh.
 use crate::{
-    tile::{nav_mesh::TileNavMesh, Link, Tile }, nav::TileLookup, Nav
+    Nav,
+    nav::TileLookup,
+    tile::{Link, Tile, nav_mesh::TileNavMesh},
 };
 
 const HEURISTIC_SCALE: f32 = 0.999;
@@ -47,7 +48,7 @@ pub enum FindPolygonPathError {
 
 // Based on Bevy's MeshRayCast
 #[derive(SystemParam)]
-pub struct WaymapPath<'w, 's> {    
+pub struct WaymapPath<'w, 's> {
     #[cfg(feature = "debug_draw")]
     pub gizmos: Gizmos<'w, 's, RavenGizmos>,
     //#[doc(hidden)]
@@ -57,17 +58,8 @@ pub struct WaymapPath<'w, 's> {
     //#[doc(hidden)]
     //pub culled_list: Local<'s, Vec<(FloatOrd, Entity)>>,
     #[doc(hidden)]
-    pub waymap_query: Query<
-        'w,
-        's,
-        (
-            Entity,
-            Read<Nav>,
-            Read<TileLookup>,
-            Read<GlobalTransform>,
-        ),
-        With<Nav>,
-    >,
+    pub waymap_query:
+        Query<'w, 's, (Entity, Read<Nav>, Read<TileLookup>, Read<GlobalTransform>), With<Nav>>,
     #[doc(hidden)]
     pub tile_query: Query<'w, 's, (Read<TileNavMesh>, Read<GlobalTransform>), With<Tile>>,
     pub ray_cast: TlasCast<'w, 's>,
@@ -82,9 +74,7 @@ pub struct WaymapPath<'w, 's> {
 /// * ``end_pos`` - Destination position for the path, i.e where you want to go.
 /// * ``position_search_radius`` - Radius to search for a start & end polygon in. In world units. If **``None``** is supplied a default value of ``5.0`` is used.
 /// * ``area_cost_multipliers`` - Multipliers for area cost, use to prioritize or deprioritize taking certain paths. Values not present default to 1.0. Lesser value means the path costs less.
-impl<'w, 's> WaymapPath<'w, 's> {
-    
-}
+impl<'w, 's> WaymapPath<'w, 's> {}
 
 #[derive(Debug)]
 pub enum StringPullingError {
@@ -105,7 +95,7 @@ pub fn perform_string_pulling_on_path(
     path: &[(UVec2, u16)],
 ) -> Result<Vec<Vec3>, StringPullingError> {
     //if path.is_empty() {
-        return Err(StringPullingError::PathEmpty);
+    return Err(StringPullingError::PathEmpty);
     //}
 
     // let Some(start_tile) = nav_mesh.tiles.get(&path[0].0) else {

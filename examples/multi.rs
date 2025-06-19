@@ -15,7 +15,7 @@ fn main() {
                     ..default()
                 }),
                 ..default()
-            }),            
+            }),
             PhysicsPlugins::default(),
             NavPlugin,
             RavenDebugPlugin::default(),

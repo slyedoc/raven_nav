@@ -2,7 +2,9 @@ mod common; // helper functions
 use common::*;
 
 use avian3d::prelude::*;
-use bevy::{color::palettes::tailwind, math::bounding::RayCast3d, prelude::*, window::WindowResolution};
+use bevy::{
+    color::palettes::tailwind, math::bounding::RayCast3d, prelude::*, window::WindowResolution,
+};
 use raven_bvh::prelude::*;
 use raven_nav::prelude::*;
 
@@ -33,14 +35,12 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     agent_spawner: Res<AgentSpawner>,
 ) {
-
     // spawn default waymap for now
     let nav = commands
         .spawn((
             Name::new("Nav"),
             // This creates the waymap which will generate a nav-mesh
-            Nav::new(0.5, 1.9, Vec3::splat(60.0))
-                .with_traversible_slope(40.0_f32),
+            Nav::new(0.5, 1.9, Vec3::splat(60.0)).with_traversible_slope(40.0_f32),
             NavMovement, // helper to move the waymap around with Arrow Keys to see regeneration
         ))
         .id();
@@ -64,14 +64,12 @@ fn setup(
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -1.0, -0.5, 0.0)),
     ));
 
-    
-
     commands.spawn((
         Name::new("Ground"),
         Mesh3d(meshes.add(Plane3d::new(Vec3::Y, vec2(30.0, 30.0)))),
         MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
         Transform::default(),
-        ColliderConstructor::TrimeshFromMesh,        
+        ColliderConstructor::TrimeshFromMesh,
         RigidBody::Static,
         NavMeshAffector::default(), // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
     ));
@@ -96,7 +94,8 @@ fn setup(
         let ramp_thickness = 0.2f32;
         let ramp_angle = (ramp_height / ramp_length).atan();
 
-        let ramp_center_y = walkway_height - ramp_thickness / 2.0 - (ramp_length / 2.0) * ramp_angle.sin();
+        let ramp_center_y =
+            walkway_height - ramp_thickness / 2.0 - (ramp_length / 2.0) * ramp_angle.sin();
         commands
             .spawn((
                 Name::new("Walkway"),
@@ -116,7 +115,7 @@ fn setup(
                         translation: Vec3::new(
                             10.0,
                             -ramp_center_y + 0.3,
-                            3.3 +  walkway_depth / 2.  + ramp_length / 2.0,
+                            3.3 + walkway_depth / 2. + ramp_length / 2.0,
                         ),
                         rotation: Quat::from_rotation_x(ramp_angle),
                         ..Default::default()
@@ -164,7 +163,7 @@ fn setup(
     ));
 }
 
-fn ray_cast(    
+fn ray_cast(
     camera_query: Single<(&Camera, &GlobalTransform)>,
     window: Single<&Window>,
     tlas_query: Single<Entity, (With<Nav>, With<Tlas>)>,
@@ -172,7 +171,6 @@ fn ray_cast(
     mut gizmos: Gizmos,
     //input: Res<ButtonInput<MouseButton>>,
 ) {
-
     let (camera, camera_transform) = *camera_query;
     let tlas_entity = *tlas_query;
 
@@ -185,17 +183,16 @@ fn ray_cast(
         return;
     };
 
-    let ray_cast  = RayCast3d::from_ray(ray, 100.0);
+    let ray_cast = RayCast3d::from_ray(ray, 100.0);
 
     gizmos.line(
         ray_cast.origin.into(),
         ray_cast.get_point(100.0).into(),
         tailwind::RED_400,
-    );    
-    if let Some((_e, hit)) = tlas.intersect_tlas(&ray_cast, tlas_entity) {        
+    );
+    if let Some((_e, hit)) = tlas.intersect_tlas(&ray_cast, tlas_entity) {
         //let p : Vec3 =  ray_cast.get_point(hit.distance).into();
-        gizmos.sphere( ray.get_point(hit.distance), 0.1, tailwind::GREEN_400);
+        gizmos.sphere(ray.get_point(hit.distance), 0.1, tailwind::GREEN_400);
         //gizmos.sphere(hit.point, 0.1, tailwind::GREEN_400);
     }
-
 }

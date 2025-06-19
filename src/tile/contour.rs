@@ -3,14 +3,13 @@ use std::cmp::Ordering;
 use bevy::prelude::*;
 
 use crate::{
-    nav::Nav,
     collider::Area,
-    tile::{        
-        voxelization::{OpenSpan, OpenTile},
+    math::{in_cone, intersect},
+    nav::Nav,
+    tile::{
         get_neighbour_index,
+        voxelization::{OpenSpan, OpenTile},
     },
-    
-    math::{in_cone, intersect},    
 };
 
 const FLAG_BORDER_VERTEX: u32 = 0x10000;

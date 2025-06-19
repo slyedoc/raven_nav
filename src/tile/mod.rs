@@ -1,31 +1,22 @@
-pub mod regions;
 pub mod contour;
-pub mod voxelization;
 pub mod detail_mesh;
 pub mod mesher;
 pub mod nav_mesh;
+pub mod regions;
+pub mod voxelization;
 
 use bevy::{
-    asset::RenderAssetUsages,
-        math::bounding::Aabb3d,
-    prelude::*,
-       platform::collections::HashSet,
+    asset::RenderAssetUsages, math::bounding::Aabb3d, platform::collections::HashSet, prelude::*,
     render::mesh::Indices,
 };
 use raven_bvh::prelude::*;
 use smallvec::SmallVec;
 
-use crate::{
-    nav::*,
-    tile::mesher::*,
-    utils::Aabb3dExt,
-    collider::*,
-    tile::{nav_mesh::*},        
-};
+use crate::{collider::*, nav::*, tile::mesher::*, tile::nav_mesh::*, utils::Aabb3dExt};
 
 #[derive(Component, Reflect, Deref, DerefMut)]
 #[require(
-    Transform, 
+    Transform,
     TileAffectors,
     Visibility // used for rendering mesh
 )]
@@ -55,14 +46,12 @@ pub struct TileAffectors(pub HashSet<Entity>);
 #[relationship(relationship_target = WaymapTiles)]
 pub struct TileWaymap(pub Entity);
 
-
 /// Added to view mesh child of the tile, used for debug rendering
 #[derive(Component, Clone, Debug, Reflect)]
 #[reflect(Component)]
 pub struct TileViewMesh;
 
 pub(crate) type TileBuildResult = Option<(TileNavMesh, Aabb3d, Mesh, Bvh)>;
-
 
 pub(crate) async fn build_tile(
     waymap: Nav,
@@ -73,21 +62,21 @@ pub(crate) async fn build_tile(
     let _span = info_span!("Build Tile", name = "raven::build_tile").entered();
 
     let triangle_collection: Vec<TriangleCollection> = convert_geometry(geometry_collections);
-    let voxelized_tile = voxelization::build_heightfield_tile(&waymap, triangle_collection, heightfield_collections);
+    let voxelized_tile =
+        voxelization::build_heightfield_tile(&waymap, triangle_collection, heightfield_collections);
     let mut open_tile = voxelization::build_open_heightfield_tile(voxelized_tile, &waymap);
     voxelization::erode_walkable_area(&mut open_tile, &waymap);
     voxelization::calculate_distance_field(&mut open_tile, &waymap);
     regions::build_regions(&mut open_tile, &waymap);
     let contour_set = contour::build_contours(&open_tile, &waymap);
-    let poly_tile = mesher::build_poly_mesh(contour_set, &waymap, &open_tile);    
+    let poly_tile = mesher::build_poly_mesh(contour_set, &waymap, &open_tile);
     let nav_mesh = nav_mesh::build_tile_nav_mesh(poly_tile.clone(), &waymap);
     let mesh = build_bevy_mesh(&poly_tile, &waymap);
-    
-    
-    let Ok(aabb) = Aabb3d::from_points(nav_mesh.vertices.clone().into_iter()) else {      
-        // no vertices in nav mesh, can only happen when no walkable area is found  
+
+    let Ok(aabb) = Aabb3d::from_points(nav_mesh.vertices.clone().into_iter()) else {
+        // no vertices in nav mesh, can only happen when no walkable area is found
         return None;
-    };    
+    };
     let bvh = Bvh::from(&mesh);
 
     Some((nav_mesh, aabb, mesh, bvh))
@@ -100,15 +89,15 @@ fn build_bevy_mesh(poly_mesh: &PolyMesh, waymap: &Nav) -> Mesh {
     let mut indices: Vec<u32> = Vec::with_capacity(poly_mesh.polygons.len() * 3);
 
     for v in poly_mesh.vertices.iter().map(|vertex| {
-            Vec3::new(
-                tile_origin.x + vertex.x as f32 * waymap.cell_width,
-                tile_origin.y + vertex.y as f32 * waymap.cell_height,
-                tile_origin.z + vertex.z as f32 * waymap.cell_width,
-            )
-        }) {        
+        Vec3::new(
+            tile_origin.x + vertex.x as f32 * waymap.cell_width,
+            tile_origin.y + vertex.y as f32 * waymap.cell_height,
+            tile_origin.z + vertex.z as f32 * waymap.cell_width,
+        )
+    }) {
         positions.push([v.x, v.y, v.z]);
         // TODO, use area type to effect uv
-        uvs.push([0.0, 0.0]); 
+        uvs.push([0.0, 0.0]);
     }
     for tri in &poly_mesh.polygons {
         indices.push(tri[0]);
@@ -122,13 +111,12 @@ fn build_bevy_mesh(poly_mesh: &PolyMesh, waymap: &Nav) -> Mesh {
     );
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-    
-    mesh.insert_indices(Indices::U32(indices));
 
+    mesh.insert_indices(Indices::U32(indices));
 
     mesh.duplicate_vertices();
     mesh.compute_flat_normals();
-        
+
     mesh
 }
 
@@ -161,8 +149,6 @@ pub struct NavPolygon {
     pub indices: [u32; VERTICES_IN_TRIANGLE],
     pub links: SmallVec<[Link; VERTICES_IN_TRIANGLE]>, // This becomes a mess memory wise with a ton of different small objects around.
 }
-
-
 
 pub fn get_neighbour_index(tile_size: usize, index: usize, dir: usize) -> usize {
     match dir {

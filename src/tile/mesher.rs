@@ -1,9 +1,9 @@
-use bevy::{math::U16Vec3, prelude::*};
-use strum_macros::EnumIter;
 use crate::{
     math::{intersect, intersect_prop, left, left_on},
     tile::{contour::ContourSet, detail_mesh::build_detail_mesh, voxelization::OpenTile},
 };
+use bevy::{math::U16Vec3, prelude::*};
+use strum_macros::EnumIter;
 
 use crate::{Area, nav::Nav};
 
@@ -19,11 +19,7 @@ pub struct PolyMesh {
 const VERTEX_BUCKET_COUNT: usize = 1 << 12; // 4 096
 pub const VERTICES_IN_TRIANGLE: usize = 3; // Don't change this. The mesher can't make anything other than triangles.
 
-pub fn build_poly_mesh(
-    contour_set: ContourSet,
-    config: &Nav,
-    open_tile: &OpenTile,
-) -> PolyMesh {
+pub fn build_poly_mesh(contour_set: ContourSet, config: &Nav, open_tile: &OpenTile) -> PolyMesh {
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::build_poly_mesh").entered();
 
@@ -150,8 +146,20 @@ pub enum EdgeConnectionDirection {
 impl EdgeConnectionDirection {
     pub fn offset(&self, coordinate: UVec2) -> Option<UVec2> {
         match self {
-            EdgeConnectionDirection::XNegative => if coordinate.x > 0 { Some(coordinate - UVec2::X) } else { None },
-            EdgeConnectionDirection::ZNegative => if coordinate.y > 0 { Some(coordinate - UVec2::Y) } else { None },
+            EdgeConnectionDirection::XNegative => {
+                if coordinate.x > 0 {
+                    Some(coordinate - UVec2::X)
+                } else {
+                    None
+                }
+            }
+            EdgeConnectionDirection::ZNegative => {
+                if coordinate.y > 0 {
+                    Some(coordinate - UVec2::Y)
+                } else {
+                    None
+                }
+            }
             EdgeConnectionDirection::ZPositive => Some(coordinate + UVec2::Y),
             EdgeConnectionDirection::XPositive => Some(coordinate + UVec2::X),
         }

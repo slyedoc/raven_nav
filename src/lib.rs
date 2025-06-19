@@ -1,6 +1,5 @@
 #![allow(warnings)]
 #![allow(unused_variables)]
-
 #![feature(test)]
 extern crate test;
 
@@ -10,11 +9,11 @@ mod collider;
 #[cfg(feature = "debug_draw")]
 pub mod debug_draw;
 mod math;
+mod nav;
 mod nav_ray_cast;
 mod path_finding;
 pub mod tile;
 mod utils;
-mod nav;
 
 use crate::nav_ray_cast::NavLinks;
 use agent::*;
@@ -22,13 +21,13 @@ use character::*;
 use collider::*;
 #[cfg(feature = "debug_draw")]
 use debug_draw::*;
+use nav::*;
 use nav_ray_cast::*;
 use raven_bvh::prelude::*;
 use tile::{
     Tile, TileAabb, TileAffectors, TileMeshAabb, TileViewMesh, TileWaymap, build_tile,
     nav_mesh::TileNavMesh,
 };
-use nav::*;
 
 use avian3d::{
     parry::{math::Isometry, na::Vector3, shape::HeightField},
@@ -48,7 +47,9 @@ use std::sync::Arc;
 pub mod prelude {
     #[cfg(feature = "debug_draw")]
     pub use crate::debug_draw::*;
-    pub use crate::{NavPlugin, agent::*, character::*, collider::*, tile::*, nav::*, nav_ray_cast::*, utils::*};
+    pub use crate::{
+        NavPlugin, agent::*, character::*, collider::*, nav::*, nav_ray_cast::*, tile::*, utils::*,
+    };
 }
 
 pub struct NavPlugin;
@@ -79,7 +80,6 @@ impl Plugin for NavPlugin {
                 .chain()
                 .after(TransformSystem::TransformPropagate)
                 .after(BvhSystems::Update),
-
         )
         .register_type::<Agent>()
         .register_type::<AgentSettings>()
@@ -112,9 +112,13 @@ pub fn update_navigation(
 
                 #[cfg(feature = "debug_draw")]
                 gizmos.line(point, ray.get_point(ray.max).into(), tailwind::YELLOW_400);
-                if let Some((_entity, hit)) =  tlas_cast.intersect_tlas(&ray, nav_entity) {
+                if let Some((_entity, hit)) = tlas_cast.intersect_tlas(&ray, nav_entity) {
                     #[cfg(feature = "debug_draw")]
-                    gizmos.line(point, ray.get_point(hit.distance).into(), tailwind::FUCHSIA_500);
+                    gizmos.line(
+                        point,
+                        ray.get_point(hit.distance).into(),
+                        tailwind::FUCHSIA_500,
+                    );
                 }
             }
         }
@@ -152,10 +156,7 @@ fn add_characters_to_waymap(
 #[expect(clippy::type_complexity)]
 fn update_navmesh_affectors(
     mut commands: Commands,
-    mut waymap_query: Query<
-        (&Nav, &GlobalTransform, &TileLookup, &mut DirtyTiles),
-        Without<Tile>,
-    >,
+    mut waymap_query: Query<(&Nav, &GlobalTransform, &TileLookup, &mut DirtyTiles), Without<Tile>>,
     mut tile_query: Query<&mut TileAffectors, With<Tile>>,
     mut collider_query: Query<
         (
@@ -403,7 +404,10 @@ fn start_tile_build_tasks(
 /// Checks status of tile builds
 fn poll_tile_build_tasks(
     mut commands: Commands,
-    mut waymap_query: Query<(Entity, &mut WaymapGenerationTasks, &mut TlasRebuildStrategy), With<Nav>>,
+    mut waymap_query: Query<
+        (Entity, &mut WaymapGenerationTasks, &mut TlasRebuildStrategy),
+        With<Nav>,
+    >,
     mut meshes: ResMut<Assets<Mesh>>,
     mut bvhs: ResMut<Assets<Bvh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -418,20 +422,18 @@ fn poll_tile_build_tasks(
             if let Some(result) = future::block_on(future::poll_once(&mut job.task)) {
                 let tile_entity = job.entity;
                 match result {
-                    // 
-                    Some((mut tile_nav_mesh, aabb, mesh, bvh)) => {                   
+                    //
+                    Some((mut tile_nav_mesh, aabb, mesh, bvh)) => {
                         // Update links to neighbours,
                         nav_edit_links.update_tile_links(tile_entity, &mut tile_nav_mesh);
 
                         // Update the tile nav mesh
-                        commands
-                            .entity(job.entity)                            
-                            .insert((
-                                tile_nav_mesh,
-                                MeshBvh(bvhs.add(bvh)),
-                                TlasTarget(e),
-                                TileMeshAabb(aabb)                                
-                            ));
+                        commands.entity(job.entity).insert((
+                            tile_nav_mesh,
+                            MeshBvh(bvhs.add(bvh)),
+                            TlasTarget(e),
+                            TileMeshAabb(aabb),
+                        ));
 
                         // adding view mesh as child so we can use Tranform to offset
                         #[cfg(feature = "debug_draw")]
@@ -467,7 +469,6 @@ fn poll_tile_build_tasks(
                 }
                 // trigger a rebuild of the tlas
                 *strat = TlasRebuildStrategy::Mannual(true);
-
 
                 return false;
             }

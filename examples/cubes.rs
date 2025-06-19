@@ -12,13 +12,12 @@ fn main() {
             DefaultPlugins,
             PhysicsPlugins::default(),
             NavPlugin,
-            RavenDebugPlugin::default(),      
+            RavenDebugPlugin::default(),
             ExampleCommonPlugin,
         ))
         .insert_resource(ClearColor(Color::srgb(0.05, 0.05, 0.1)))
         .add_systems(Startup, setup)
         .add_systems(Update, movement)
-
         .run();
 }
 

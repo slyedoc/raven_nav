@@ -3,8 +3,8 @@ use common::*;
 
 use avian3d::prelude::*;
 use bevy::{prelude::*, window::WindowResolution};
-use raven_nav::prelude::*;
 use raven_bvh::prelude::BvhCamera;
+use raven_nav::prelude::*;
 
 fn main() {
     App::new()
@@ -17,7 +17,6 @@ fn main() {
                 }),
                 ..default()
             }),
-        
             // physics
             PhysicsPlugins::default(),
             NavPlugin,

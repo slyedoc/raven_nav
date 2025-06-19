@@ -8,8 +8,11 @@ use bevy::{
 use bevy::log::info_span;
 
 use crate::{
-    nav::Nav,    
-    tile::{voxelization::OpenTile, mesher::{PolyMesh, VERTICES_IN_TRIANGLE}},
+    nav::Nav,
+    tile::{
+        mesher::{PolyMesh, VERTICES_IN_TRIANGLE},
+        voxelization::OpenTile,
+    },
 };
 
 use super::get_neighbour_index;

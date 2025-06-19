@@ -2,8 +2,8 @@ use bevy::prelude::*;
 
 use crate::{
     collider::Area,
-    tile::{Link, NavPolygon, mesher::*},
     nav::Nav,
+    tile::{Link, NavPolygon, mesher::*},
 };
 
 use super::mesher::VERTICES_IN_TRIANGLE;
@@ -47,7 +47,6 @@ impl TileNavMesh {
     }
 }
 
-
 fn get_height_in_triangle(vertices: &[Vec3; VERTICES_IN_TRIANGLE], position: Vec3) -> Option<f32> {
     if !in_polygon(vertices, position) {
         return None;
@@ -64,7 +63,6 @@ fn get_height_in_triangle(vertices: &[Vec3; VERTICES_IN_TRIANGLE], position: Vec
 
     Some(closest.y)
 }
-
 
 fn closest_point_on_edges(vertices: &[Vec3; VERTICES_IN_TRIANGLE], position: Vec3) -> Vec3 {
     let mut d_min = f32::INFINITY;

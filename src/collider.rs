@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use avian3d::parry::{
-    math::Isometry, na::Point3, shape::{self,  TypedShape}
+    math::Isometry,
+    na::Point3,
+    shape::{self, TypedShape},
 };
 use bevy::{ecs::entity::EntityHashMap, prelude::*};
 
@@ -18,7 +20,7 @@ pub struct Area(pub u16);
 #[reflect(Component)]
 pub struct UpdateTileAffectors;
 
- // Rest of this file is utility functions for converting colliders to triangles
+// Rest of this file is utility functions for converting colliders to triangles
 // TODO: convert GeometryCollection, HeightFieldCollection, HeightFieldCollection to single type with enum
 
 pub enum GeometryResult<'a> {
@@ -112,7 +114,10 @@ impl Triangles {
 const SUBDIVISIONS: u32 = 5;
 
 /// Rasterizes a collider into a collection of triangles.
-pub(crate) fn rasterize_collider_inner(collider: ColliderType, memoized_triangles: Triangles) -> Triangles {
+pub(crate) fn rasterize_collider_inner(
+    collider: ColliderType,
+    memoized_triangles: Triangles,
+) -> Triangles {
     let (vertices, triangles) = match collider {
         ColliderType::Cuboid(cuboid) => cuboid.to_trimesh(),
         ColliderType::Ball(ball) => ball.to_trimesh(SUBDIVISIONS, SUBDIVISIONS),
@@ -120,11 +125,7 @@ pub(crate) fn rasterize_collider_inner(collider: ColliderType, memoized_triangle
         ColliderType::Cylinder(cylinder) => cylinder.to_trimesh(SUBDIVISIONS),
         ColliderType::Cone(cone) => cone.to_trimesh(SUBDIVISIONS),
         ColliderType::Triangle(triangle) => {
-            let triangle = Triangles::Triangle(
-                triangle
-                    .vertices()
-                    .map(Vec3::from),
-            );
+            let triangle = Triangles::Triangle(triangle.vertices().map(Vec3::from));
 
             return memoized_triangles.extend(triangle);
         }
@@ -137,15 +138,11 @@ pub(crate) fn rasterize_collider_inner(collider: ColliderType, memoized_triangle
         }
     };
 
-    let vertices = vertices
-        .into_iter()
-        .map(Vec3::from)
-        .collect();
+    let vertices = vertices.into_iter().map(Vec3::from).collect();
 
     let trimesh = Triangles::TriMesh(vertices, triangles.into_boxed_slice());
     memoized_triangles.extend(trimesh)
 }
-
 
 /// Handle the geometry result and add it to the appropriate collections.
 pub(crate) fn handle_geometry_result(
@@ -275,7 +272,9 @@ pub fn get_geometry_type(collider: TypedShape) -> GeometryResult {
     }
 }
 
-pub(crate) fn convert_geometry(geometry_collections: Vec<GeometryCollection>) -> Vec<TriangleCollection> {
+pub(crate) fn convert_geometry(
+    geometry_collections: Vec<GeometryCollection>,
+) -> Vec<TriangleCollection> {
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::convert_geometry").entered();
     geometry_collections
