@@ -45,30 +45,30 @@ fn test_contains_point() {
 }
 
 
-pub trait RayCast3dToSpace {
-    /// Converting ray into another space
-    fn to_space(&self, transform: &GlobalTransform) -> RayCast3d;
+// pub trait RayCast3dToSpace {
+//     /// Converting ray into another space
+//     fn to_space(&self, transform: &GlobalTransform) -> RayCast3d;
 
-    /// Get the point at a given distance along the ray.    
-    fn get_point(&self, distance: f32) -> Vec3A;
-}
+//     /// Get the point at a given distance along the ray.    
+//     fn get_point(&self, distance: f32) -> Vec3A;
+// }
 
-impl RayCast3dToSpace for RayCast3d {
-    // TODO: figured this be built in to bevy
-    #[inline]
-    fn to_space(&self, transform: &GlobalTransform) -> RayCast3d {
-        let world_to = transform.affine().inverse();
-        RayCast3d::new(
-            world_to.transform_point3a(self.origin),            
-            Dir3A::new(world_to.transform_vector3a(self.direction.as_vec3a())).unwrap(),
-            self.max,
-        )
-    }
+// impl RayCast3dToSpace for RayCast3d {
+//     // TODO: figured this be built in to bevy
+//     #[inline]
+//     fn to_space(&self, transform: &GlobalTransform) -> RayCast3d {
+//         let world_to = transform.affine().inverse();
+//         RayCast3d::new(
+//             world_to.transform_point3a(self.origin),            
+//             Dir3A::new(world_to.transform_vector3a(self.direction.as_vec3a())).unwrap(),
+//             self.max,
+//         )
+//     }
 
-    #[inline]
-    fn get_point(&self, distance: f32) -> Vec3A {
-        self.origin + *self.direction * distance
-    }
-}
+//     #[inline]
+//     fn get_point(&self, distance: f32) -> Vec3A {
+//         self.origin + *self.direction * distance
+//     }
+// }
 
     

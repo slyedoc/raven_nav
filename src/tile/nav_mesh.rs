@@ -1,29 +1,159 @@
-use std::cmp::Ordering;
-
-use bevy::{
-    math::bounding::Aabb3d,
-    platform::collections::{HashMap, HashSet},
-    prelude::*,
-};
-use disjoint::DisjointSet;
-use thiserror::Error;
+use bevy::prelude::*;
 
 use crate::{
-    archipelago::Archipelago,
-    tile::{
-        Link, NavPolygon,
-        mesher::{EdgeConnection, PolyMesh},
-    },
-    utils::Aabb3dExt,
+    collider::Area,
+    tile::{Link, NavPolygon, mesher::*},
+    nav::Nav,
 };
 
-/// A navigation mesh.
-///
+use super::mesher::VERTICES_IN_TRIANGLE;
 
-pub fn build_nav_mesh(
-    poly_mesh: PolyMesh,
-    archipelago: &Archipelago,
-) -> Result<NavigationMesh, ValidationError> {
+// #[derive(Component, Clone, Debug, Deref, DerefMut, Reflect)]
+// #[reflect(Component)]
+// pub struct TileNavMesh(pub Handle<NavMesh>);
+
+/// Set this up as an asset, but due to https://github.com/bevyengine/bevy/issues/16244
+/// we cant access multiple assets in the same system, and since no need for reused, used it as a component instead
+//#[derive(Asset, TypePath, Debug)]
+#[derive(Component, Debug, Reflect)]
+#[reflect(Component)]
+pub struct TileNavMesh {
+    /// The vertices that make up the polygons.
+    pub(crate) vertices: Vec<Vec3>,
+    /// The polygons of the mesh.
+    pub(crate) polygons: Vec<NavPolygon>,
+    pub areas: Vec<Area>,
+    pub edges: Vec<[EdgeConnection; VERTICES_IN_TRIANGLE]>,
+}
+impl TileNavMesh {
+    // /// Returns the closest point on ``polygon`` to ``position``.
+    pub fn get_closest_point_in_polygon(&self, polygon: &NavPolygon, position: Vec3) -> Vec3 {
+        let vertices: [Vec3; 3] = polygon.indices.map(|index| self.vertices[index as usize]);
+
+        if let Some(height) = get_height_in_triangle(&vertices, position) {
+            return Vec3::new(position.x, height, position.z);
+        }
+
+        closest_point_on_edges(&vertices, position)
+    }
+
+    pub fn remove_links_to_direction(&mut self, remove_direction: EdgeConnectionDirection) {
+        for polygon in self.polygons.iter_mut() {
+            polygon.links.retain(|link| match link {
+                Link::Internal { .. } => true,
+                Link::External { direction, .. } => *direction != remove_direction,
+            });
+        }
+    }
+}
+
+
+fn get_height_in_triangle(vertices: &[Vec3; VERTICES_IN_TRIANGLE], position: Vec3) -> Option<f32> {
+    if !in_polygon(vertices, position) {
+        return None;
+    }
+
+    if let Some(height) =
+        closest_height_in_triangle(vertices[0], vertices[1], vertices[2], position)
+    {
+        return Some(height);
+    }
+
+    // We only hit this if we are ON an edge. Unlikely to happen.
+    let closest = closest_point_on_edges(vertices, position);
+
+    Some(closest.y)
+}
+
+
+fn closest_point_on_edges(vertices: &[Vec3; VERTICES_IN_TRIANGLE], position: Vec3) -> Vec3 {
+    let mut d_min = f32::INFINITY;
+    let mut t_min = 0.0;
+
+    let mut edge_min = Vec3::ZERO;
+    let mut edge_max = Vec3::ZERO;
+
+    for i in 0..vertices.len() {
+        let prev = (vertices.len() + i - 1) % vertices.len();
+
+        let (d, t) = distance_point_to_segment_2d(position, vertices[prev], vertices[i]);
+        if d < d_min {
+            d_min = d;
+            t_min = t;
+            edge_min = vertices[prev];
+            edge_max = vertices[i];
+        }
+    }
+
+    edge_min.lerp(edge_max, t_min)
+}
+
+fn distance_point_to_segment_2d(point: Vec3, seg_a: Vec3, seg_b: Vec3) -> (f32, f32) {
+    let ba_x = seg_b.x - seg_a.x;
+    let ba_z = seg_b.z - seg_a.z;
+
+    let dx = point.x - seg_a.x;
+    let dz = point.z - seg_a.z;
+
+    let d = ba_x * ba_x + ba_z * ba_z;
+    let mut t = ba_x * dx + ba_z * dz;
+    if d > 0.0 {
+        t /= d;
+    }
+    t = t.clamp(0.0, 1.0);
+
+    let dx = seg_a.x + t * ba_x - point.x;
+    let dz = seg_a.z + t * ba_z - point.z;
+
+    (dx * dx + dz * dz, t)
+}
+
+fn in_polygon(vertices: &[Vec3; VERTICES_IN_TRIANGLE], position: Vec3) -> bool {
+    let mut inside = false;
+
+    for i in 0..vertices.len() {
+        let prev = (vertices.len() + i - 1) % vertices.len();
+
+        let a = vertices[i];
+        let b = vertices[prev];
+        if ((a.z > position.z) != (b.z > position.z))
+            && (position.x < (b.x - a.x) * (position.z - a.z) / (b.z - a.z) + a.x)
+        {
+            inside = !inside;
+        }
+    }
+
+    inside
+}
+
+fn closest_height_in_triangle(a: Vec3, b: Vec3, c: Vec3, position: Vec3) -> Option<f32> {
+    let v0 = c - a;
+    let v1 = b - a;
+    let v2 = position - a;
+
+    let mut denom = v0.x * v1.z - v0.z * v1.x;
+    const EPS: f32 = 0.000001;
+    if denom.abs() < EPS {
+        return None;
+    }
+
+    let mut u = v1.z * v2.x - v1.x * v2.z;
+    let mut v = v0.x * v2.z - v0.z * v2.x;
+
+    if denom < 0.0 {
+        denom = -denom;
+        u = -u;
+        v = -v;
+    }
+
+    if u >= 0.0 && v >= 0.0 && (u + v) <= denom {
+        return Some(a.y + (v0.y * u + v1.y * v) / denom);
+    }
+
+    None
+}
+
+pub fn build_tile_nav_mesh(poly_mesh: PolyMesh, waymap: &Nav) -> TileNavMesh {
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::build_nav_mesh").entered();
 
@@ -52,313 +182,263 @@ pub fn build_nav_mesh(
         })
         .collect();
 
-    let tile_origin = archipelago.get_tile_minimum_bound_with_border();
+    let tile_origin = waymap.get_tile_minimum_bound_with_border();
     // Scale the vertices to tile space
     let vertices: Vec<Vec3> = poly_mesh
         .vertices
         .iter()
         .map(|vertex| {
             Vec3::new(
-                tile_origin.x + vertex.x as f32 * archipelago.cell_width,
-                tile_origin.y + vertex.y as f32 * archipelago.cell_height,
-                tile_origin.z + vertex.z as f32 * archipelago.cell_width,
+                tile_origin.x + vertex.x as f32 * waymap.cell_width,
+                tile_origin.y + vertex.y as f32 * waymap.cell_height,
+                tile_origin.z + vertex.z as f32 * waymap.cell_width,
             )
         })
         .collect();
 
-    let polygon_type_indices = vec![0; polygons.len()];
-    let mut region_sets = DisjointSet::with_len(polygons.len());
-    let mut connectivity_set = HashMap::new();
-    let polygons: Vec<Vec<usize>> = polygons
-        .iter()
-        .map(|polygon| {
-            polygon
-                .indices
-                .iter()
-                .copied()
-                .map(|i| i as usize)
-                .collect()
-        })
-        .collect();
-
-    // build connectivity and validate mesh
-    enum ConnectivityState {
-        Disconnected,
-        Boundary {
-            polygon: usize,
-            edge: usize,
-        },
-        Connected {
-            polygon_1: usize,
-            edge_1: usize,
-            polygon_2: usize,
-            edge_2: usize,
-        },
-    }
-
-    for (polygon_index, polygon) in polygons.iter().enumerate() {
-        if polygon.len() < 3 {
-            return Err(ValidationError::NotEnoughVerticesInPolygon(polygon_index));
-        }
-
-        for vertex_index in polygon {
-            if *vertex_index >= vertices.len() {
-                return Err(ValidationError::InvalidVertexIndexInPolygon(polygon_index));
-            }
-        }
-
-        for i in 0..polygon.len() {
-            let prev = polygon[if i == 0 { polygon.len() - 1 } else { i - 1 }];
-            let center = polygon[i];
-            let next = polygon[if i == polygon.len() - 1 { 0 } else { i + 1 }];
-
-            // Check if the edge is degenerate.
-
-            let edge = if center < next {
-                (center, next)
-            } else {
-                (next, center)
-            };
-            if edge.0 == edge.1 {
-                return Err(ValidationError::DegenerateEdgeInPolygon(polygon_index));
-            }
-
-            // Derive connectivity for the edge.
-
-            let state = connectivity_set
-                .entry(edge)
-                .or_insert(ConnectivityState::Disconnected);
-            match state {
-                ConnectivityState::Disconnected => {
-                    *state = ConnectivityState::Boundary {
-                        polygon: polygon_index,
-                        edge: i,
-                    };
-                }
-                &mut ConnectivityState::Boundary {
-                    polygon: polygon_1,
-                    edge: edge_1,
-                    ..
-                } => {
-                    *state = ConnectivityState::Connected {
-                        polygon_1,
-                        edge_1,
-                        polygon_2: polygon_index,
-                        edge_2: i,
-                    };
-                    region_sets.join(polygon_1, polygon_index);
-                }
-                ConnectivityState::Connected { .. } => {
-                    return Err(ValidationError::DoublyConnectedEdge(edge.0, edge.1));
-                }
-            }
-
-            // Check if the vertex is concave.
-            let a = vertices[prev].xz();
-            let b = vertices[center].xz();
-            let c = vertices[next].xz();
-
-            let left_edge = a - b;
-            let right_edge = c - b;
-
-            match right_edge.perp_dot(left_edge).partial_cmp(&0.0) {
-                Some(Ordering::Less) => {} // convex
-                // The right edge is parallel to the left edge, but they point in
-                // opposite directions.
-                Some(Ordering::Equal) if right_edge.dot(left_edge) < 0.0 => {}
-                // right_edge is to the left of the left_edge (or they are parallel
-                // and point in the same direciton), so the polygon is
-                // concave.
-                _ => return Err(ValidationError::ConcavePolygon(polygon_index)),
-            }
-        }
-    }
-
-    let mut region_to_normalized_region = HashMap::new();
-    let mut polygons = polygons
-        .iter()
-        .enumerate()
-        .map(|(polygon_index, polygon_vertices)| {
-            ValidPolygon {
-                bounds: Aabb3d::from_points(
-                    polygon_vertices.iter().map(|&vertex| vertices[vertex]),
-                )
-                .expect("Polygon must have at least one vertex"),
-                center: polygon_vertices.iter().map(|i| vertices[*i]).sum::<Vec3>()
-                    / polygon_vertices.len() as f32,
-                connectivity: vec![None; polygon_vertices.len()],
-                vertices: polygon_vertices.clone(),
-                region: {
-                    let region = region_sets.root_of(polygon_index);
-                    // Get around the borrow checker by deciding on the new normalized
-                    // region beforehand.
-                    let new_normalized_region = region_to_normalized_region.len();
-                    // Either lookup the existing normalized region or insert the next
-                    // unique index.
-                    *region_to_normalized_region
-                        .entry(region)
-                        .or_insert_with(|| new_normalized_region)
-                },
-                type_index: polygon_type_indices[polygon_index],
-            }
-        })
-        .collect::<Vec<_>>();
-
-    let mut used_type_indices = HashSet::new();
-    polygons.iter().for_each(|polygon| {
-        used_type_indices.insert(polygon.type_index);
-    });
-
-    let mut boundary_edges = Vec::new();
-    for connectivity_state in connectivity_set.values() {
-        match connectivity_state {
-            ConnectivityState::Disconnected => panic!("Value is never stored"),
-            &ConnectivityState::Boundary { polygon, edge } => {
-                boundary_edges.push(MeshEdgeRef {
-                    edge_index: edge,
-                    polygon_index: polygon,
-                });
-            }
-            &ConnectivityState::Connected {
-                polygon_1,
-                edge_1,
-                polygon_2,
-                edge_2,
-            } => {
-                let edge = polygons[polygon_1].get_edge_indices(edge_1);
-                let edge_center = (vertices[edge.0] + vertices[edge.1]) / 2.0;
-                let travel_distances = (
-                    polygons[polygon_1].center.distance(edge_center),
-                    polygons[polygon_2].center.distance(edge_center),
-                );
-                polygons[polygon_1].connectivity[edge_1] = Some(Connectivity {
-                    polygon_index: polygon_2,
-                    travel_distances,
-                });
-                polygons[polygon_2].connectivity[edge_2] = Some(Connectivity {
-                    polygon_index: polygon_1,
-                    travel_distances: (travel_distances.1, travel_distances.0),
-                });
-            }
-        }
-    }
-
-    Ok(NavigationMesh {
-        polygons,
+    TileNavMesh {
         vertices,
-        boundary_edges,
-        used_type_indices,
-        //type_index_to_node_type: HashMap::new(),
-    })
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Error)]
-pub enum ValidationError {
-    /// Stores the index of the polygon.
-    #[error("The polygon at index {0} is concave or has edges in clockwise order.")]
-    ConcavePolygon(usize),
-    /// Stores the index of the polygon.
-    #[error("The polygon at index {0} does not have at least 3 vertices.")]
-    NotEnoughVerticesInPolygon(usize),
-    /// Stores the index of the polygon.
-    #[error("The polygon at index {0} references an out-of-bounds vertex.")]
-    InvalidVertexIndexInPolygon(usize),
-    /// Stores the index of the polygon.
-    #[error("The polygon at index {0} contains a degenerate edge (an edge with zero length).")]
-    DegenerateEdgeInPolygon(usize),
-    /// Stores the indices of the two vertices that make up the edge.
-    #[error("The edge made from vertices {0} and {1} is used by more than two polygons.")]
-    DoublyConnectedEdge(usize, usize),
-    #[error("There are no vertices in the polygon.")]
-    NoVertices,
-}
-
-/// An asset holding a `landmass` nav mesh.
-#[derive(Asset, TypePath, Debug)]
-#[allow(dead_code)]
-pub struct NavigationMesh {
-    /// The vertices that make up the polygons.
-    pub(crate) vertices: Vec<Vec3>,
-    /// The polygons of the mesh.
-    pub(crate) polygons: Vec<ValidPolygon>,
-    /// The boundary edges in the navigation mesh. Edges are stored as pairs of
-    /// vertices in a counter-clockwise direction. That is, moving along an edge
-    /// (e.0, e.1) from e.0 to e.1 will move counter-clockwise along the
-    /// boundary. The order of edges is undefined.
-    pub(crate) boundary_edges: Vec<MeshEdgeRef>,
-    /// The type indices used by this navigation mesh. This is a convenience for
-    /// just iterating through every polygon and checking its type index. Note
-    /// these don't correspond to [`crate::NodeType`]s yet. This occurs once
-    /// assigned to an island.
-    pub(crate) used_type_indices: HashSet<usize>,
-    // /// The nav mesh data.
-    // pub nav_mesh: Arc<ValidNavigationMesh>,
-    // /// A map from the type indices used by [`Self::nav_mesh`] to the
-    // /// [`NodeType`]s used in the [`crate::Archipelago`]. Type indices not
-    // /// present in this map are implicitly assigned the "default" node type,
-    // /// which always has a cost of 1.0.
-    // pub type_index_to_node_type: HashMap<usize, NodeType>,
-}
-
-#[cfg(test)]
-#[path = "nav_mesh_test.rs"]
-mod test;
-
-/// A reference to an edge on a navigation mesh.
-#[derive(PartialEq, Eq, Debug, Clone, Hash, Default, Reflect)]
-pub(crate) struct MeshEdgeRef {
-    /// The index of the polygon that this edge belongs to.
-    pub(crate) polygon_index: usize,
-    /// The index of the edge within the polygon.
-    pub(crate) edge_index: usize,
-}
-
-#[derive(PartialEq, Debug, Clone, Reflect)]
-pub(crate) struct Connectivity {
-    /// The index of the polygon that this edge leads to.
-    pub(crate) polygon_index: usize,
-    /// The distances of travelling across this connection. The first is the
-    /// distance travelled across the starting node, and the second is the
-    /// distance travelled across the destination node. These must be multiplied
-    /// by the actual node costs.
-    pub(crate) travel_distances: (f32, f32),
-}
-
-#[derive(Debug, Reflect, Clone, PartialEq)]
-
-pub(crate) struct ValidPolygon {
-    /// The vertices are indexes to the `vertices` Vec of the corresponding
-    /// ValidNavigationMesh.
-    pub(crate) vertices: Vec<usize>,
-    /// The connectivity of each edge in the polygon. This is the same length as
-    /// the number of edges (which is equivalent to `self.vertices.len()`).
-    /// Entries that are `None` correspond to the boundary of the navigation
-    /// mesh, while `Some` entries are connected to another node.
-    pub(crate) connectivity: Vec<Option<Connectivity>>,
-    /// The "region" that this polygon belongs to. Each region is disjoint from
-    /// every other. A "direct" path only exists if the region matches between
-    /// two nodes. An "indirect" path exists if regions are joined together
-    /// through boundary links.
-    pub(crate) region: usize,
-    /// The "type" of this node. This is translated into a [`crate::NodeType`]
-    /// once it is part of an island.
-    pub(crate) type_index: usize,
-    /// The bounding box of `vertices`.
-    pub(crate) bounds: Aabb3d,
-    /// The center of the polygon.
-    pub(crate) center: Vec3,
-}
-
-impl ValidPolygon {
-    /// Determines the vertices corresponding to `edge`.
-    pub(crate) fn get_edge_indices(&self, edge: usize) -> (usize, usize) {
-        (
-            self.vertices[edge],
-            self.vertices[if edge == self.vertices.len() - 1 {
-                0
-            } else {
-                edge + 1
-            }],
-        )
+        edges: poly_mesh.edges,
+        polygons,
+        areas: poly_mesh.areas,
     }
 }
+
+pub fn connect_external_links(
+    tile: &mut TileNavMesh,
+    tile_transform: &GlobalTransform,
+    neighbour: &TileNavMesh,
+    neighbour_transform: &GlobalTransform,
+    neighbour_direction: EdgeConnectionDirection,
+    neighbour_to_self_direction: EdgeConnectionDirection,
+    remove_existing_links: bool,
+    step_height: f32,
+) {
+    for (poly_index, polygon) in tile.polygons.iter_mut().enumerate() {
+        if remove_existing_links {
+            polygon.links.retain(|link| match link {
+                Link::Internal { .. } => true,
+                Link::External { direction, .. } => *direction != neighbour_direction,
+            });
+        }
+
+        for (edge_index, edge) in tile.edges[poly_index].iter().enumerate() {
+            // filter to only external edges on the side we are interested in
+            let EdgeConnection::External(edge_direction) = edge else {
+                continue;
+            };
+            if *edge_direction != neighbour_direction {
+                continue;
+            }
+
+            let vertex_a =
+                tile_transform.transform_point(tile.vertices[polygon.indices[edge_index] as usize]);
+            let vertex_b = tile_transform.transform_point(
+                tile.vertices[polygon.indices[(edge_index + 1) % polygon.indices.len()] as usize],
+            );
+
+            let (connection_count, connected_polys, connection_areas) =
+                find_connecting_polygons_in_tile(
+                    &vertex_a,
+                    &vertex_b,
+                    neighbour,
+                    neighbour_transform,
+                    neighbour_to_self_direction,
+                    step_height,
+                );
+
+            polygon.links.extend((0..connection_count).map(|i| {
+                let neighbour_polygon = connected_polys[i];
+                let area = connection_areas[i];
+
+                let (mut bound_min, mut bound_max) = if neighbour_to_self_direction
+                    == EdgeConnectionDirection::XNegative
+                    || neighbour_to_self_direction == EdgeConnectionDirection::XPositive
+                {
+                    let min = (area.x - vertex_a.z) / (vertex_b.z - vertex_a.z);
+                    let max = (area.y - vertex_a.z) / (vertex_b.z - vertex_a.z);
+
+                    (min, max)
+                } else {
+                    let min = (area.x - vertex_a.x) / (vertex_b.x - vertex_a.x);
+                    let max = (area.y - vertex_a.x) / (vertex_b.x - vertex_a.x);
+
+                    (min, max)
+                };
+
+                if bound_min > bound_max {
+                    std::mem::swap(&mut bound_min, &mut bound_max);
+                }
+
+                let min_byte = (bound_min.clamp(0.0, 1.0) * 255.0).round() as u8;
+                let max_byte = (bound_max.clamp(0.0, 1.0) * 255.0).round() as u8;
+
+                Link::External {
+                    edge: edge_index as u8,
+                    neighbour_polygon,
+                    direction: neighbour_direction,
+                    bound_min: min_byte,
+                    bound_max: max_byte,
+                }
+            }));
+            break; // We can only have one edge parallel to the direction in a triangle.
+        }
+    }
+}
+
+const MAX_CONNECTING_POLYGONS: usize = 8;
+
+fn find_connecting_polygons_in_tile(
+    vertex_a: &Vec3,
+    vertex_b: &Vec3,
+    tile: &TileNavMesh,
+    tile_transform: &GlobalTransform,
+    side: EdgeConnectionDirection,
+    step_height: f32,
+) -> (
+    usize,
+    [u16; MAX_CONNECTING_POLYGONS],
+    [Vec2; MAX_CONNECTING_POLYGONS],
+) {
+    let mut connecting_polys = [0; MAX_CONNECTING_POLYGONS];
+    let mut connection_area = [Vec2::ZERO; MAX_CONNECTING_POLYGONS];
+    let mut count = 0;
+
+    let (in_min, in_max) = calculate_slab_end_points(vertex_a, vertex_b, side);
+    let in_pos = get_slab_position(vertex_a, side);
+
+    for (poly_index, polygon) in tile.polygons.iter().enumerate() {
+        for (edge_index, edge) in tile.edges[poly_index].iter().enumerate() {
+            let EdgeConnection::External(direction) = edge else {
+                continue;
+            };
+            if *direction != side {
+                continue;
+            }
+
+            let vertex_c =
+                tile_transform.transform_point(tile.vertices[polygon.indices[edge_index] as usize]);
+            let vertex_d = tile_transform.transform_point(
+                tile.vertices[polygon.indices[(edge_index + 1) % polygon.indices.len()] as usize],
+            );
+
+            let edge_pos = get_slab_position(&vertex_c, side);
+
+            if (in_pos - edge_pos).abs() > 0.01 {
+                continue;
+            }
+            let (edge_min, edge_max) = calculate_slab_end_points(&vertex_c, &vertex_d, side);
+
+            if !check_slabs_overlap(in_min, in_max, edge_min, edge_max, 0.01, step_height) {
+                continue;
+            }
+
+            if count < connecting_polys.len() {
+                connecting_polys[count] = poly_index as u16;
+                connection_area[count] =
+                    Vec2::new(in_min.x.max(edge_min.x), in_max.x.min(edge_max.x));
+                count += 1;
+            }
+            break;
+        }
+    }
+
+    (count, connecting_polys, connection_area)
+}
+
+fn calculate_slab_end_points(
+    vertex_a: &Vec3,
+    vertex_b: &Vec3,
+    side: EdgeConnectionDirection,
+) -> (Vec2, Vec2) {
+    if side == EdgeConnectionDirection::XNegative || side == EdgeConnectionDirection::XPositive {
+        if vertex_a.z < vertex_b.z {
+            let min = vertex_a.zy();
+            let max = vertex_b.zy();
+
+            (min, max)
+        } else {
+            let min = vertex_b.zy();
+            let max = vertex_a.zy();
+
+            (min, max)
+        }
+    } else if vertex_a.x < vertex_b.x {
+        let min = vertex_a.xy();
+        let max = vertex_b.xy();
+
+        (min, max)
+    } else {
+        let min = vertex_b.xy();
+        let max = vertex_a.xy();
+
+        (min, max)
+    }
+}
+
+fn get_slab_position(vertex: &Vec3, side: EdgeConnectionDirection) -> f32 {
+    match side {
+        EdgeConnectionDirection::XNegative => vertex.x,
+        EdgeConnectionDirection::ZPositive => vertex.z,
+        EdgeConnectionDirection::XPositive => vertex.x,
+        EdgeConnectionDirection::ZNegative => vertex.z,
+    }
+}
+
+fn check_slabs_overlap(
+    a_min: Vec2,
+    a_max: Vec2,
+    b_min: Vec2,
+    b_max: Vec2,
+    edge_shrink: f32,
+    allowed_step: f32,
+) -> bool {
+    let min_edge = (a_min.x + edge_shrink).max(b_min.x + edge_shrink);
+    let max_edge = (a_max.x - edge_shrink).min(b_max.x - edge_shrink);
+    if min_edge > max_edge {
+        return false;
+    }
+
+    let a_d = (a_max.y - a_min.y) / (a_max.x - a_min.x);
+    let a_k = a_min.y - a_d * a_min.x;
+
+    let b_d = (b_max.y - b_min.y) / (b_max.x - b_min.x);
+    let b_k = b_min.y - a_d * b_min.x;
+
+    let a_min_y = a_d * min_edge + a_k;
+    let a_max_y = a_d * max_edge + a_k;
+
+    let b_min_y = b_d * min_edge + b_k;
+    let b_max_y = b_d * max_edge + b_k;
+
+    let delta_min = b_min_y - a_min_y;
+    let delta_max = b_max_y - a_max_y;
+
+    if delta_min * delta_max < 0.0 {
+        return true;
+    }
+
+    let threshold = (allowed_step * 2.0).powi(2);
+
+    delta_min * delta_min <= threshold || delta_max * delta_max <= threshold
+}
+
+// /// A reference to an edge on a navigation mesh.
+// #[derive(PartialEq, Eq, Debug, Clone, Hash, Default, Reflect)]
+// pub(crate) struct MeshEdgeRef {
+//     /// The index of the polygon that this edge belongs to.
+//     pub(crate) polygon_index: usize,
+//     /// The index of the edge within the polygon.
+//     pub(crate) edge_index: usize,
+// }
+
+// #[derive(PartialEq, Debug, Clone, Reflect)]
+// pub(crate) struct Connectivity {
+//     /// The index of the polygon that this edge leads to.
+//     pub(crate) polygon_index: usize,
+//     /// The distances of travelling across this connection. The first is the
+//     /// distance travelled across the starting node, and the second is the
+//     /// distance travelled across the destination node. These must be multiplied
+//     /// by the actual node costs.
+//     pub(crate) travel_distances: (f32, f32),
+// }

@@ -2,8 +2,9 @@ mod common; // helper functions
 use common::*;
 
 use avian3d::prelude::*;
-use bevy::{color::palettes::tailwind, prelude::*, window::WindowResolution};
-use raven::prelude::*;
+use bevy::{color::palettes::tailwind, math::bounding::RayCast3d, prelude::*, window::WindowResolution};
+use raven_bvh::prelude::*;
+use raven_nav::prelude::*;
 
 fn main() {
     App::new()
@@ -17,11 +18,12 @@ fn main() {
                 ..default()
             }),
             PhysicsPlugins::default(),
-            RavenPlugin,
+            NavPlugin,
             RavenDebugPlugin::default(),
             ExampleCommonPlugin,
         ))
         .add_systems(Startup, setup)
+        .add_systems(Update, ray_cast)
         .run();
 }
 
@@ -31,8 +33,21 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     agent_spawner: Res<AgentSpawner>,
 ) {
+
+    // spawn default waymap for now
+    let nav = commands
+        .spawn((
+            Name::new("Nav"),
+            // This creates the waymap which will generate a nav-mesh
+            Nav::new(0.5, 1.9, Vec3::splat(60.0))
+                .with_traversible_slope(40.0_f32),
+            NavMovement, // helper to move the waymap around with Arrow Keys to see regeneration
+        ))
+        .id();
+
     commands.spawn((
         CameraFree, // Helper to move the camera around with WASD and mouse look with right mouse button
+        BvhCamera::new(512, 512, nav), // debug camera for bvh
         Camera3d::default(),
         Camera {
             hdr: true,
@@ -49,23 +64,14 @@ fn setup(
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -1.0, -0.5, 0.0)),
     ));
 
-    // spawn default archipelago for now
-    let a1 = commands
-        .spawn((
-            Name::new("Archipelago"),
-            // This creates the archipelago which will generate a nav-mesh
-            Archipelago::new(0.5, 1.9, Vec3::splat(60.0))
-                .with_traversible_slope(40.0_f32),
-            ArchipelagoMovement, // helper to move the archipelago around with Arrow Keys to see regeneration
-        ))
-        .id();
+    
 
     commands.spawn((
         Name::new("Ground"),
         Mesh3d(meshes.add(Plane3d::new(Vec3::Y, vec2(30.0, 30.0)))),
         MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
         Transform::default(),
-        ColliderConstructor::TrimeshFromMesh,
+        ColliderConstructor::TrimeshFromMesh,        
         RigidBody::Static,
         NavMeshAffector::default(), // Only entities with a NavMeshAffector component will contribute to the nav-mesh.
     ));
@@ -78,7 +84,8 @@ fn setup(
     });
 
     {
-        // construct a walkway with ramps
+        // TODO: delete this nonsense
+        // to construct a walkway with ramps
         // anything more than this and going to blender
         let walkway_width = 25.0f32;
         let walkway_depth = 8.0f32;
@@ -155,4 +162,40 @@ fn setup(
         Agent,
         Transform::from_xyz(0.0, 2.0, 2.0),
     ));
+}
+
+fn ray_cast(    
+    camera_query: Single<(&Camera, &GlobalTransform)>,
+    window: Single<&Window>,
+    tlas_query: Single<Entity, (With<Nav>, With<Tlas>)>,
+    tlas: TlasCast,
+    mut gizmos: Gizmos,
+    //input: Res<ButtonInput<MouseButton>>,
+) {
+
+    let (camera, camera_transform) = *camera_query;
+    let tlas_entity = *tlas_query;
+
+    let Some(cursor_position) = window.cursor_position() else {
+        return;
+    };
+
+    // Calculate a ray pointing from the camera into the world based on the cursor's position.
+    let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_position) else {
+        return;
+    };
+
+    let ray_cast  = RayCast3d::from_ray(ray, 100.0);
+
+    gizmos.line(
+        ray_cast.origin.into(),
+        ray_cast.get_point(100.0).into(),
+        tailwind::RED_400,
+    );    
+    if let Some((_e, hit)) = tlas.intersect_tlas(&ray_cast, tlas_entity) {        
+        //let p : Vec3 =  ray_cast.get_point(hit.distance).into();
+        gizmos.sphere( ray.get_point(hit.distance), 0.1, tailwind::GREEN_400);
+        //gizmos.sphere(hit.point, 0.1, tailwind::GREEN_400);
+    }
+
 }

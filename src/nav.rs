@@ -1,29 +1,35 @@
 use crate::{agent::*, character::*, tile::*};
 use bevy::{
-    math::bounding::Aabb3d, platform::collections::{HashMap, HashSet}, prelude::*, tasks::Task
+    math::bounding::Aabb3d,
+    platform::collections::{HashMap, HashSet},
+    prelude::*,
+    tasks::Task,
 };
 use bevy_inspector_egui::{inspector_options::std_options::NumberDisplay, prelude::*};
+use raven_bvh::prelude::*;
 use std::num::{NonZeroU8, NonZeroU16};
 
-/// Will have [`Agents`] and [`Characters`] updated when agents and characters are added
+/// A navigation area is a region of the world that can be navigated by agents and characters.
 #[derive(Component, Reflect, Debug, Clone, InspectorOptions)]
 #[reflect(Component, InspectorOptions)]
 #[require(
     Transform,
-    ArchipelagoAgents,
-    ArchipelagoCharacters,
-    ArchipelagoTiles,
-    TileLookup,
-    DirtyTiles,
-    ActiveGenerationTasks,
-    Visibility // used for rendering mesh
+    WaymapAgents, // list of agents in the waymap
+    WaymapCharacters, // list of characters in the waymap
+    WaymapTiles, // list of tiles in the waymap
+    TileLookup, // lookup of tile entities by their coordinates
+    DirtyTiles, // tracks tiles that need to be updated
+    WaymapGenerationTasks, // list of tasks that are currently generating tiles
+    AgentOptions, // used for agent avoidance
+    Visibility, // used for rendering view mesh
+    Tlas,
+    TlasRebuildStrategy = TlasRebuildStrategy::Mannual(false),
 )]
-pub struct Archipelago {
-    /// Extents of the world as measured from the world origin (0.0, 0.0) on the XZ-plane.
+pub struct Nav {
+    /// Extents of the Nav area
     ///
     /// **Suggested value**: As small as possible whilst still keeping the entire world within it.
-    ///
-    /// This exists because figuring out which tile we are in around the world origin would not work without it.
+    ///    
     //#[inspector(min = Vec3::new(1.0, 1.0, 1.0), max = Vec3::new(1000.0, 1000.0, 1000.0))]
     pub world_half_extents: Vec3,
 
@@ -95,15 +101,17 @@ pub struct Archipelago {
     /// Helps on bumpy shapes like terrain but comes at a performance cost.
     /// **Experimental**: This may have issues at the edges of regions.
     pub experimental_detail_mesh_generation: Option<DetailMeshSettings>,
-
-    // Navigation settings
-    pub agent_options: AgentOptions,
-
 }
 
-impl Archipelago {
+impl Default for Nav {
+    fn default() -> Self {
+        Self::new(0.5, 2.0, Vec3::new(100.0, 100.0, 100.0))
+    }
+}
+
+impl Nav {
     pub fn new(agent_radius: f32, agent_height: f32, size: Vec3) -> Self {
-        let cell_width =  agent_radius / 2.0;
+        let cell_width = agent_radius / 2.0;
         let cell_height = agent_radius / 4.0;
 
         let walkable_height = (agent_height / cell_height) as u16;
@@ -124,20 +132,6 @@ impl Archipelago {
             max_contour_simplification_error: 1.1,
             max_tile_generation_tasks: NonZeroU16::new(8).unwrap(),
             experimental_detail_mesh_generation: None,
-
-            // Navigation settings
-            agent_options: AgentOptions {
-                neighbourhood: 10.0 * agent_radius,
-                avoidance_time_horizon: 1.0,
-                obstacle_avoidance_time_horizon: 0.5,
-                reached_destination_avoidance_responsibility: 0.1,
-                point_sample_distance: PointSampleDistance {
-                    horizontal_distance: 0.3 * agent_radius,
-                    distance_above: 2.0, // 0.5 * agent_radius,
-                    distance_below: 0.5, // agent_radius,
-                    vertical_preference_ratio: 2.0,
-                }
-            },
         }
     }
 
@@ -221,7 +215,6 @@ impl Archipelago {
     pub fn get_border_size(&self) -> f32 {
         f32::from(self.walkable_radius) * self.cell_width
     }
-
     /// Returns the tile coordinate that contains the supplied ``world_position``.
     // TODO: this assumes position is always in contained, and only checking xz
     #[inline]
@@ -270,7 +263,7 @@ impl Archipelago {
     pub fn get_tile_side_with_border(&self) -> usize {
         usize::from(self.tile_width.get()) + usize::from(self.walkable_radius) * 2
     }
-    
+
     #[inline]
     pub fn get_border_side(&self) -> usize {
         // Not technically useful currently but in case.
@@ -278,64 +271,21 @@ impl Archipelago {
     }
 }
 
-impl Default for Archipelago {
-    fn default() -> Self {
-        Self::new(0.5, 2.0, Vec3::new(10.0, 10.0, 10.0))
-    }
-}
 
-#[test]
-fn test_tile_origin() {
-    let arch = Archipelago::new(0.5, 2.0, Vec3::new(100.0, 20.0, 100.0));
-    let tile_size = arch.get_tile_size();
-    assert_eq!(tile_size, 30.0); // agent radius * half * tile width
 
-    // let global_trans = GlobalTransform::IDENTITY;
-    // let a = arch.get_tile_origin(UVec2::new(0, 0), &global_trans);
-    // assert_eq!(a, Vec3::new(-50.0, -10.0, -50.0));
-    // let b = arch.get_tile_origin(UVec2::new(1, 0), &global_trans);
-    // assert_eq!(b, Vec3::new(-20.0, -10.0, -50.0));
-    // let c = arch.get_tile_origin(UVec2::new(1, 1), &global_trans);
-    // assert_eq!(c, Vec3::new(-20.0, -10.0, -20.0));
-
-    // let global_trans = GlobalTransform::from(
-    //     Transform::from_translation(Vec3::new(10.0, 0.0, 10.0))
-    // );
-    // let a = arch.get_tile_origin(UVec2::new(0, 0), &global_trans);
-    // assert_eq!(a, Vec3::new(-40.0, -10.0, -40.0));
-}
-
-#[test]
-fn test_tile_tile_containing_position() {
-    let arch = Archipelago::new(0.5, 2.0, Vec3::new(100.0, 20.0, 100.0));
-    let tile_size = arch.get_tile_size();
-    assert_eq!(tile_size, 30.0); // agent radius * half * tile width
-
-    // let global_trans = GlobalTransform::IDENTITY;
-
-    // let a = arch.get_tile_containing_position(Vec2::new(-50.0, -50.0), &global_trans);
-    // assert_eq!(a, UVec2::new(0, 0));
-
-    // let b = arch.get_tile_containing_position(Vec2::new(-20., -50.0), &global_trans);
-    // assert_eq!(b, UVec2::new(1, 0));
-
-    // let b = arch.get_tile_containing_position(Vec2::new(-20., -20.0), &global_trans);
-    // assert_eq!(b, UVec2::new(1, 1));
-}
-
-/// Managed list of agents in the archipelago.
+/// Managed list of agents in the waymap.
 #[derive(Component, Default, Debug, Reflect)]
-#[relationship_target(relationship = AgentArchipelago)]
-pub struct ArchipelagoAgents(Vec<Entity>);
+#[relationship_target(relationship = AgentWaymap)]
+pub struct WaymapAgents(Vec<Entity>);
 
-/// Managed list of characters in the archipelago.
+/// Managed list of characters in the waymap.
 #[derive(Component, Default, Debug, Reflect)]
-#[relationship_target(relationship = CharacterArchipelago)]
-pub struct ArchipelagoCharacters(Vec<Entity>);
+#[relationship_target(relationship = CharacterWaymap)]
+pub struct WaymapCharacters(Vec<Entity>);
 
 #[derive(Component, Default, Debug, Reflect)]
-#[relationship_target(relationship = TileArchipelago)]
-pub struct ArchipelagoTiles(Vec<Entity>);
+#[relationship_target(relationship = TileWaymap)]
+pub struct WaymapTiles(Vec<Entity>);
 
 /// Set of all tiles that need to be rebuilt.
 #[derive(Default, Component, Reflect, Deref, DerefMut)]
@@ -347,11 +297,11 @@ pub struct DirtyTiles(pub HashSet<UVec2>);
 
 /// List of tasks that are currently generating tiles.
 #[derive(Component, Default, Deref, DerefMut)]
-pub struct ActiveGenerationTasks(pub Vec<NavMeshGenerationJob>);
+pub struct WaymapGenerationTasks(pub Vec<NavMeshGenerationJob>);
 
 #[derive(Component, Clone, Debug, Deref, DerefMut, Reflect)]
 #[reflect(Component)]
-pub struct ArchipelagoAabb(pub Aabb3d);
+pub struct WaymapAabb(pub Aabb3d);
 
 /// A task that is generating a nav-mesh tile.
 pub struct NavMeshGenerationJob {
@@ -360,27 +310,38 @@ pub struct NavMeshGenerationJob {
     pub task: Task<TileBuildResult>,
 }
 
-#[derive(Clone, Reflect, Debug)]
+#[derive(Component, Reflect, Debug, InspectorOptions)]
+#[reflect(Component)]
 pub struct AgentOptions {
-    // Navigation settings
-    /// The options for sampling agent and target points.
-    pub point_sample_distance: PointSampleDistance,
-    /// The distance that an agent will consider avoiding another agent.
+    /// The distance that an agent will consider avoiding another agent
+    #[inspector(min = 1.0, max = 50.0, speed = 1.0, display = NumberDisplay::Slider)]
     pub neighbourhood: f32,
     // The time into the future that collisions with other agents should be
     /// avoided.
+    #[inspector(min = 0.5, max = 5.0, speed = 0.1, display = NumberDisplay::Slider)]
     pub avoidance_time_horizon: f32,
     /// The time into the future that collisions with obstacles should be
     /// avoided.
+    #[inspector(min = 0.1, max = 5.0, speed = 0.1, display = NumberDisplay::Slider)]
     pub obstacle_avoidance_time_horizon: f32,
     /// The avoidance responsibility to use when an agent has reached its target.
     /// A value of 1.0 is the default avoidance responsibility. A value of 0.0
     /// would mean no avoidance responsibility, but a value of 0.0 is invalid and
     /// may panic. This should be a value between 0.0 and 1.0.
+    #[inspector(min = 0.01, max = 1.0, speed = 0.01, display = NumberDisplay::Slider)]
     pub reached_destination_avoidance_responsibility: f32,
 }
 
-
+impl Default for AgentOptions {
+    fn default() -> Self {
+        Self {
+            neighbourhood: 5.0,
+            avoidance_time_horizon: 1.0,
+            obstacle_avoidance_time_horizon: 0.5,
+            reached_destination_avoidance_responsibility: 0.1,
+        }
+    }
+}
 
 #[derive(Clone, Reflect, Debug)]
 pub struct DetailMeshSettings {
@@ -393,61 +354,4 @@ pub struct DetailMeshSettings {
     ///
     /// **Suggested value:** >=2. Start high & reduce as needed.  
     pub sample_step: NonZeroU8,
-}
-
-#[derive(Reflect, Debug, PartialEq, Clone)]
-pub struct PointSampleDistance {
-    pub horizontal_distance: f32,
-
-    /// The vertical distance above the query point that a node may be sampled.
-    ///
-    /// If a sample point is further above than this distance, it will be
-    /// ignored. This value must be greater than [`Self::distance_below`].
-    pub distance_above: f32,
-
-    /// The vertical distance below the query point that a node may be sampled.
-    ///
-    /// If a sample point is further below than this distance, it will be
-    /// ignored. This value must be greater than [`Self::distance_above`].
-    pub distance_below: f32,
-
-    /// The ratio between the vertical and the horizontal distances to prefer.
-    /// For example, if this value is 2.0, then a sample point directly below
-    /// the query point 1.9 units away will be selected over a sample point 1.0
-    /// unit away horizontally. This value must be positive.
-    pub vertical_preference_ratio: f32,
-}
-
-
-impl PointSampleDistance {
-    pub fn aabb(&self) -> Aabb3d {
-        Aabb3d {
-            min: Vec3A::new(
-                -self.horizontal_distance,
-                -self.distance_below, // yes, this is the opposite of what you think
-                -self.horizontal_distance,
-            ),
-            max: Vec3A::new(
-                self.horizontal_distance,
-                self.distance_above,  // same
-                self.horizontal_distance,
-            ),
-        }
-
-    }
-    pub fn aabb_reversed(&self) -> Aabb3d {
-        Aabb3d {
-            min: Vec3A::new(
-                -self.horizontal_distance,
-                -self.distance_above, // yes, this is the opposite of what you think
-                -self.horizontal_distance,
-            ),
-            max: Vec3A::new(
-                self.horizontal_distance,
-                self.distance_below,  // same
-                self.horizontal_distance,
-            ),
-        }
-
-    }
 }

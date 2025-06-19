@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::archipelago::ArchipelagoAgents;
+use crate::nav::WaymapAgents;
 
 #[derive(Component, Reflect)]
 #[require(
@@ -13,10 +13,10 @@ use crate::archipelago::ArchipelagoAgents;
 )]
 pub struct Agent;
 
-/// Ref to Archipelago, added if not present when Agent is added
+/// Ref to Waymap, added if not present when Agent is added
 #[derive(Component, Debug, Reflect)]
-#[relationship(relationship_target = ArchipelagoAgents)]
-pub struct AgentArchipelago(pub Entity);
+#[relationship(relationship_target = WaymapAgents)]
+pub struct AgentWaymap(pub Entity);
 
 /// The settings for an agent. See [`crate::AgentBundle`] for required related
 /// components.

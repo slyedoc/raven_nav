@@ -4,7 +4,7 @@ use avian3d::parry::{bounding_volume::Aabb, math::Isometry, na::Point3};
 use bevy::{math::Vec3A, prelude::*};
 use smallvec::SmallVec;
 
-use crate::{Area, archipelago::Archipelago, collider::*};
+use crate::{Area, nav::Nav, collider::*};
 
 use super::get_neighbour_index;
 
@@ -55,7 +55,7 @@ pub struct OpenTile {
 
 
 pub(super) fn build_heightfield_tile(
-    config: &Archipelago,
+    config: &Nav,
     triangle_collections: Vec<TriangleCollection>,
     heightfields: Vec<HeightFieldCollection>,
 ) -> VoxelizedTile {
@@ -206,7 +206,7 @@ mod tests {
         let mut heightfield_collections = Vec::new();
         heightfield_collections.push(heightfield);
 
-        let config = Archipelago::new(0.5, 1.9, Vec3::splat(50.0));
+        let config = Nav::new(0.5, 1.9, Vec3::splat(50.0));
         let _voxel_tile = build_heightfield_tile(&config, vec![], heightfield_collections);
     }
 
@@ -224,7 +224,7 @@ fn process_triangle(
     a: Vec3A,
     b: Vec3A,
     c: Vec3A,
-    vox_settings: &Archipelago,
+    vox_settings: &Nav,
     tile_max_bound: IVec3,
     tile_side: usize,
     voxel_cells: &mut [VoxelCell],
@@ -371,7 +371,7 @@ fn process_triangle(
 }
 
 #[inline]
-fn is_triangle_traversable(a: Vec3A, b: Vec3A, c: Vec3A, vox_settings: &Archipelago) -> bool {
+fn is_triangle_traversable(a: Vec3A, b: Vec3A, c: Vec3A, vox_settings: &Nav) -> bool {
     let ab = b - a;
     let ac = c - a;
     let normal = ab.cross(ac).normalize();
@@ -454,7 +454,7 @@ fn divide_polygon(
 
 pub fn build_open_heightfield_tile(
     voxelized_tile: VoxelizedTile,
-    vox_settings: &Archipelago,
+    vox_settings: &Nav,
 ) -> OpenTile {
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::build_open_heightfield_tile").entered();
@@ -529,7 +529,7 @@ pub fn build_open_heightfield_tile(
     open_tile
 }
 
-fn link_neighbours(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
+fn link_neighbours(open_tile: &mut OpenTile, vox_settings: &Nav) {
     let mut neighbour_spans = Vec::with_capacity(3);
 
     let tile_side = vox_settings.get_tile_side_with_border();
@@ -589,7 +589,7 @@ fn link_neighbours(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
     }
 }
 
-pub fn erode_walkable_area(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
+pub fn erode_walkable_area(open_tile: &mut OpenTile, vox_settings: &Nav) {
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::erode_walkable_area").entered();
 
@@ -630,7 +630,7 @@ pub fn erode_walkable_area(open_tile: &mut OpenTile, vox_settings: &Archipelago)
     }
 }
 
-pub fn calculate_distance_field(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
+pub fn calculate_distance_field(open_tile: &mut OpenTile, vox_settings: &Nav) {
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::calculate_distance_field").entered();
 
@@ -706,7 +706,7 @@ pub fn calculate_distance_field(open_tile: &mut OpenTile, vox_settings: &Archipe
     // End Box Blur
 }
 
-fn filter_tile(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
+fn filter_tile(open_tile: &mut OpenTile, vox_settings: &Nav) {
     let tile_side = vox_settings.get_tile_side_with_border();
     // Pass 1.
     for (i, cell) in open_tile.cells.iter().enumerate() {

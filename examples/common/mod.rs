@@ -3,11 +3,11 @@
 mod camera_free;
 use bevy_enhanced_input::EnhancedInputPlugin;
 pub use camera_free::*;
-use raven::prelude::RavenGizmos;
+use raven_nav::prelude::*;
 pub use sly_editor::*;
 
-mod archipelago_movement;
-pub use archipelago_movement::*;
+mod move_waymap;
+pub use move_waymap::*;
 
 mod agent;
 pub use agent::*;
@@ -16,11 +16,10 @@ use bevy::{
     asset::RenderAssetUsages,
     input::common_conditions::input_just_pressed,
     prelude::*,
-    render::mesh::{Indices, PrimitiveTopology},
+    render::mesh::{Indices, PrimitiveTopology},    
 };
 
-/// A plugin that adds common functionality used by examples,
-/// such as physics diagnostics UI and the ability to pause and step the simulation.
+//// A plugin that adds common functionality for examples,
 pub struct ExampleCommonPlugin;
 
 impl Plugin for ExampleCommonPlugin {
@@ -28,27 +27,34 @@ impl Plugin for ExampleCommonPlugin {
         // Add diagnostics.
         app.add_plugins((
             SlyEditorPlugin::default(), // custom bevy_egui_inspector
-            EnhancedInputPlugin,
-            CameraFreePlugin,          // camera movement
-            ArchipelagoMovementPlugin, // arch movement, used to test rebuilds
+            EnhancedInputPlugin,        // handle input
+            CameraFreePlugin,           // camera movement
+            MoveWaymapPlugin,           // waymap movement
         ))
         .init_resource::<AgentSpawner>()
         .add_systems(
             Update,
-            toggle_debug_draw.run_if(input_just_pressed(KeyCode::KeyM)),
-        )
+            toggle_debug_draw.run_if(input_just_pressed(KeyCode::KeyN)),
+        )        
         .add_systems(Startup, setup_key_instructions);
     }
 }
 
-fn toggle_debug_draw(mut store: ResMut<GizmoConfigStore>) {
-    let config = store.config_mut::<RavenGizmos>().0;
-    config.enabled = !config.enabled;
+fn toggle_debug_draw(mut store: ResMut<GizmoConfigStore>, mut query: Query<&mut Visibility, With<TileViewMesh>>,) {
+    let (gizmo_config, config) = store.config_mut::<RavenGizmos>();
+    gizmo_config.enabled = !gizmo_config.enabled;
+
+    for mut visibility in query.iter_mut() {
+        *visibility = match config.show_view_mesh && gizmo_config.enabled {
+            true => Visibility::Inherited,
+            false => Visibility::Hidden,
+        };
+    }
 }
 
 fn setup_key_instructions(mut commands: Commands) {
     commands.spawn((
-        Text::new("Backquote: Egui, U: Avian Diag | P: Pause/Unpause | Enter: Step | F1: Toggle Colliders, Right Mouse: Look Around, WASD: Move"),
+        Text::new("N: Nav Debug | Backquote: Inspector | U: Avian Diag |  F1-F8: Toggle Debug Views | Right Mouse: Look Around |  WASD: Move"),
         TextFont {
             font_size: 10.0,
             ..default()

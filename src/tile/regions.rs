@@ -6,7 +6,7 @@ use crate::{
 };
 
 use super::get_neighbour_index;
-use crate::archipelago::Archipelago;
+use crate::nav::Nav;
 
 #[derive(Default, Clone, Copy)]
 struct LevelStackEntry {
@@ -19,7 +19,7 @@ const EXPAND_ITERS: u16 = 8;
 const LOG_NB_STACKS: i32 = 3;
 const NB_STACKS: i32 = 1 << LOG_NB_STACKS; // 8.
 
-pub fn build_regions(open_tile: &mut OpenTile, vox_settings: &Archipelago) {
+pub fn build_regions(open_tile: &mut OpenTile, vox_settings: &Nav) {
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::build_regions").entered();
     
@@ -335,7 +335,7 @@ struct Region {
 }
 
 fn merge_regions(
-    vox_settings: &Archipelago,
+    vox_settings: &Nav,
     tile_side: usize,
     source_regions: &mut [u16],
     max_region_id: &mut u16,

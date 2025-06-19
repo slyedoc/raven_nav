@@ -6,7 +6,7 @@ use bevy::{color::palettes::tailwind, prelude::*};
 pub struct AgentSpawner {
   pub mesh: Handle<Mesh>,
   pub material: Handle<StandardMaterial>,
-  //archipelago_entity: Entity,
+  //waymap_entity: Entity,
   // target_entity: Entity,
   //fast_material: Handle<ColorMaterial>,
   //slow_node_type: NodeType,
@@ -18,6 +18,7 @@ impl AgentSpawner {
             Mesh3d(self.mesh.clone()),
             MeshMaterial3d(self.material.clone()),
             Collider::capsule(0.5, 1.9),
+            //LockedAxes::
             RigidBody::Dynamic,           
         )
     }

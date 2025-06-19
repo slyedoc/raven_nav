@@ -1,45 +1,42 @@
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
 
-pub(super) const DEFAULT_SPEED: f32 = 0.1;
+pub(super) const DEFAULT_SPEED: f32 = 0.3;
 
-// Helper plugin to move an archipelago around for testing purposes.
-pub struct ArchipelagoMovementPlugin;
+/// Use Arrow keys to move waymap around for testing purposes.
+pub struct MoveWaymapPlugin;
 
-impl Plugin for ArchipelagoMovementPlugin {
+impl Plugin for MoveWaymapPlugin {
     fn build(&self, app: &mut App) {
-        app.add_input_context::<ArchFreeInputContext>()
+        app.add_input_context::<NavInputContext>()
             .add_observer(default_binding)
             .add_observer(apply_movement);
     }
 }
 
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Default, Reflect)]
-#[require(
-    //Name = Name::new("CameraFree"),    
-    Actions::<ArchFreeInputContext>,
+#[require(    
+    Actions::<NavInputContext>,
 )]
-pub struct ArchipelagoMovement;
+pub struct NavMovement;
 
 #[derive(Debug, InputContext, Default)]
-pub struct ArchFreeInputContext;
+pub struct NavInputContext;
 
 fn default_binding(
-    trigger: Trigger<Binding<ArchFreeInputContext>>,
-    mut archs: Query<&mut Actions<ArchFreeInputContext>>,
+    trigger: Trigger<Binding<NavInputContext>>,
+    mut archs: Query<&mut Actions<NavInputContext>>,
 ) {
     let mut actions = archs.get_mut(trigger.target()).unwrap();
 
+    // // TODO: Shift doesnt work with this, find out why, upgrade to latest bevy_enhanced_input first though?
+    // actions.bind::<EnableSprint>().to(KeyCode::ShiftLeft);
+    
     // Movement
-    actions.bind::<EnableSprint>().to(KeyCode::ShiftLeft);
-
     actions
         .bind::<Move>()
         .to((
-            Cardinal::arrow_keys().with_conditions_each(BlockBy::<EnableSprint>::default()),
-            Cardinal::arrow_keys()
-                .with_conditions_each(Chord::<EnableSprint>::default())
-                .with_modifiers_each(Scale::splat(10.0)),
+            Cardinal::arrow_keys(),            
         ))
         // Don't trigger the action when the chord is active.
         .with_modifiers((
@@ -51,7 +48,7 @@ fn default_binding(
 
 fn apply_movement(
     trigger: Trigger<Fired<Move>>,
-    mut query: Query<&mut Transform, With<ArchipelagoMovement>>,
+    mut query: Query<&mut Transform, With<NavMovement>>,
 ) {
     let mut trans = query.get_mut(trigger.target()).unwrap();
     let change = vec3(trigger.value.x, 0.0, -trigger.value.y);
@@ -63,6 +60,6 @@ fn apply_movement(
 #[input_action(output = Vec2)]
 struct Move;
 
-#[derive(Debug, InputAction)]
-#[input_action(output = bool)]
-struct EnableSprint;
+// #[derive(Debug, InputAction)]
+// #[input_action(output = bool)]
+// struct EnableSprint;

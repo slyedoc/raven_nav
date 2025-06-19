@@ -3,7 +3,7 @@ use common::*;
 
 use avian3d::prelude::*;
 use bevy::{prelude::*, window::WindowResolution};
-use raven::prelude::*;
+use raven_nav::prelude::*;
 
 fn main() {
     App::new()
@@ -16,9 +16,8 @@ fn main() {
                 }),
                 ..default()
             }),
-
             PhysicsPlugins::default(),
-            RavenPlugin,
+            NavPlugin,
             RavenDebugPlugin::default(),
             ExampleCommonPlugin,
         ))
@@ -49,12 +48,12 @@ fn setup(
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -1.0, -0.5, 0.0)),
     ));
 
-    // spawn default archipelago for now
+    // spawn default waymap for now
     commands.spawn((
-        Name::new("Archipelago"),
-        // This creates the archipelago which will generate a nav-mesh
-        Archipelago::new(0.5, 1.9, Vec3::splat(50.0)).with_traversible_slope(40.0_f32.to_radians()),
-        ArchipelagoMovement, // helper to move the archipelago around with Arrow Keys to see regeneration
+        Name::new("Waymap"),
+        // This creates the waymap which will generate a nav-mesh
+        Nav::new(0.5, 1.9, Vec3::splat(50.0)).with_traversible_slope(40.0_f32.to_radians()),
+        NavMovement, // helper to move the waymap around with Arrow Keys to see regeneration
     ));
 
     commands.spawn((

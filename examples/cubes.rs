@@ -4,14 +4,14 @@ use avian3d::{math::*, prelude::*};
 use bevy::prelude::*;
 mod common; // helper functions
 use common::*;
-use raven::prelude::*;
+use raven_nav::prelude::*;
 
 fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins,
             PhysicsPlugins::default(),
-            RavenPlugin,
+            NavPlugin,
             RavenDebugPlugin::default(),      
             ExampleCommonPlugin,
         ))

@@ -3,7 +3,8 @@ use common::*;
 
 use avian3d::prelude::*;
 use bevy::{prelude::*, window::WindowResolution};
-use raven::prelude::*;
+use raven_nav::prelude::*;
+use raven_bvh::prelude::BvhCamera;
 
 fn main() {
     App::new()
@@ -19,7 +20,7 @@ fn main() {
         
             // physics
             PhysicsPlugins::default(),
-            RavenPlugin,
+            NavPlugin,
             RavenDebugPlugin::default(),
             ExampleCommonPlugin,
         ))
@@ -35,6 +36,7 @@ fn setup(
 ) {
     commands.spawn((
         Name::new("Camera"),
+        //BvhCamera::new(512, 512), // debug camera for bvh
         CameraFree,
         Camera3d::default(),
         Camera {
@@ -53,11 +55,11 @@ fn setup(
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -1.0, -0.5, 0.0)),
     ));
 
-    // spawn default archipelago for now
+    // spawn default waymap for now
     commands.spawn((
-        Name::new("Archipelago"),
-        Archipelago::new(0.5, 1.9, Vec3::splat(200.0)),
-        ArchipelagoMovement, // helper to move the archipelago around with Arrow Keys to see regeneration
+        Name::new("Waymap"),
+        Nav::new(0.5, 1.9, Vec3::splat(200.0)),
+        NavMovement, // helper to move the waymap around with Arrow Keys to see regeneration
     ));
 
     // heightfield

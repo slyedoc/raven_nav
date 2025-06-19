@@ -8,10 +8,11 @@ use bevy::{
 use bevy::log::info_span;
 
 use crate::{
-    archipelago::Archipelago,
-    get_neighbour_index,
+    nav::Nav,    
     tile::{voxelization::OpenTile, mesher::{PolyMesh, VERTICES_IN_TRIANGLE}},
 };
+
+use super::get_neighbour_index;
 
 #[derive(Debug)]
 struct HeightPatch {
@@ -28,7 +29,7 @@ struct HeightPatch {
 ///
 /// Adding vertices at points where the height difference compared to the OpenTile is too great.
 pub fn build_detail_mesh(
-    vox_settings: &Archipelago,
+    vox_settings: &Nav,
     open_tile: &OpenTile,
     poly_mesh: &PolyMesh,
 ) -> Option<PolyMesh> {
@@ -162,7 +163,7 @@ pub fn build_detail_mesh(
 }
 
 fn extract_height_data(
-    vox_settings: &Archipelago,
+    vox_settings: &Nav,
     open_tile: &OpenTile,
     triangle_vertices: &[U16Vec3],
     region: u16,
@@ -285,7 +286,7 @@ fn extract_height_data(
 fn seed_array_with_poly_center(
     open_tile: &OpenTile,
     vertices: &[U16Vec3],
-    vox_settings: &Archipelago,
+    vox_settings: &Nav,
     queue: &mut Vec<(usize, usize)>,
     height_patch: &mut HeightPatch,
 ) {

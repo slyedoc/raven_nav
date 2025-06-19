@@ -1,4 +1,4 @@
-# Raven
+# Raven Nav
 
 Bevy + Avain Navigation
 
@@ -6,20 +6,18 @@ Creating this to get a better understanding of navmeshes for myself, and I only 
 
 ## Acknowledgements
 
-99% of this codebase are derived from the following, and you should go use them most likely:
+Codebase are derived from the following, and you should go use them most likely:
 
 - [x] [oxidized_navigation](https://github.com/TheGrimsey/oxidized_navigation)
   - [ ] [recastnavigation](https://github.com/recastnavigation/recastnavigation/)
+- [x] [raven_bvh](https://github.com/slyedoc/raven_bvh)
 - [ ] [landmass](https://github.com/andriyDev/landmass)
 
-## Notes
 
-Spent far to long trying to figure out why concave navmesh (heightfields) don't work, was experimental_detail_mesh_generation, avoiding for now.
+# Notes
 
-Main changes so far:
-
- - NavMeshAffectorRelations resource changed to required Component
-
+Things I should make PR for upstream:
+  Heightfield: use parry's 'map_elements_in_local_aabb' in voxelization::build_heightfield_tile  
 ## License
 
 License under either of

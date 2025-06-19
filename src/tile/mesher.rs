@@ -1,11 +1,11 @@
 use bevy::{math::U16Vec3, prelude::*};
-
+use strum_macros::EnumIter;
 use crate::{
     math::{intersect, intersect_prop, left, left_on},
     tile::{contour::ContourSet, detail_mesh::build_detail_mesh, voxelization::OpenTile},
 };
 
-use crate::{Area, archipelago::Archipelago};
+use crate::{Area, nav::Nav};
 
 #[derive(Default, Debug, Clone)]
 pub struct PolyMesh {
@@ -21,7 +21,7 @@ pub const VERTICES_IN_TRIANGLE: usize = 3; // Don't change this. The mesher can'
 
 pub fn build_poly_mesh(
     contour_set: ContourSet,
-    config: &Archipelago,
+    config: &Nav,
     open_tile: &OpenTile,
 ) -> PolyMesh {
     #[cfg(feature = "trace")]
@@ -140,7 +140,7 @@ pub fn build_poly_mesh(
     poly_mesh
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Reflect, EnumIter)]
 pub enum EdgeConnectionDirection {
     XNegative,
     ZPositive,
@@ -148,17 +148,26 @@ pub enum EdgeConnectionDirection {
     ZNegative,
 }
 impl EdgeConnectionDirection {
-    pub fn offset(&self, coordinate: UVec2) -> UVec2 {
+    pub fn offset(&self, coordinate: UVec2) -> Option<UVec2> {
         match self {
-            EdgeConnectionDirection::XNegative => coordinate - UVec2::X,
-            EdgeConnectionDirection::ZPositive => coordinate + UVec2::Y,
-            EdgeConnectionDirection::XPositive => coordinate + UVec2::X,
-            EdgeConnectionDirection::ZNegative => coordinate - UVec2::Y,
+            EdgeConnectionDirection::XNegative => if coordinate.x > 0 { Some(coordinate - UVec2::X) } else { None },
+            EdgeConnectionDirection::ZNegative => if coordinate.y > 0 { Some(coordinate - UVec2::Y) } else { None },
+            EdgeConnectionDirection::ZPositive => Some(coordinate + UVec2::Y),
+            EdgeConnectionDirection::XPositive => Some(coordinate + UVec2::X),
+        }
+    }
+
+    pub fn flip(&self) -> EdgeConnectionDirection {
+        match self {
+            EdgeConnectionDirection::XNegative => EdgeConnectionDirection::XPositive,
+            EdgeConnectionDirection::ZNegative => EdgeConnectionDirection::ZPositive,
+            EdgeConnectionDirection::XPositive => EdgeConnectionDirection::XNegative,
+            EdgeConnectionDirection::ZPositive => EdgeConnectionDirection::ZNegative,
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Reflect)]
 pub enum EdgeConnection {
     None,
     Internal(u16),

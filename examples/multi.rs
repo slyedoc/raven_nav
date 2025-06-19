@@ -3,7 +3,7 @@ use common::*;
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
-use raven::prelude::*;
+use raven_nav::prelude::*;
 use sly_editor::IsEditorCamera;
 
 fn main() {
@@ -17,7 +17,7 @@ fn main() {
                 ..default()
             }),            
             PhysicsPlugins::default(),
-            RavenPlugin,
+            NavPlugin,
             RavenDebugPlugin::default(),
             ExampleCommonPlugin,
         ))
@@ -51,7 +51,7 @@ fn setup(
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -1.0, -0.5, 0.0)),
     ));
 
-    // first archipelago
+    // first waymap
     generate_area(
         &mut commands,
         &mut meshes,
@@ -61,7 +61,7 @@ fn setup(
         50.0,
     );
 
-    // second archipelago
+    // second waymap
     generate_area(
         &mut commands,
         &mut meshes,
@@ -96,8 +96,8 @@ fn generate_area(
     size: f32,
 ) {
     commands.spawn((
-        Name::new(format!("Archipelago {}", index)),
-        Archipelago::new(0.5, 1.9, Vec3::splat(size)),
+        Name::new(format!("Waymap {}", index)),
+        Nav::new(0.5, 1.9, Vec3::splat(size)),
         Transform::from_translation(translation),
     ));
 

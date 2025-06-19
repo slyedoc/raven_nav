@@ -12,26 +12,18 @@ use bevy::{
        platform::collections::HashSet,
     render::mesh::Indices,
 };
+use raven_bvh::prelude::*;
 use smallvec::SmallVec;
 
-use super::mesher::PolyMesh;
-
-
-
 use crate::{
-    archipelago::Archipelago,
-    mesher::{EdgeConnection, EdgeConnectionDirection, VERTICES_IN_TRIANGLE},
-    
-    archipelago::ArchipelagoTiles,
+    nav::*,
+    tile::mesher::*,
     utils::Aabb3dExt,
-   
     collider::*,
-    tile::{nav_mesh::*},
-
-        
+    tile::{nav_mesh::*},        
 };
 
-#[derive(Component, Reflect)]
+#[derive(Component, Reflect, Deref, DerefMut)]
 #[require(
     Transform, 
     TileAffectors,
@@ -58,20 +50,22 @@ pub struct TileMeshAabb(pub Aabb3d);
 #[reflect(Component)]
 pub struct TileAffectors(pub HashSet<Entity>);
 
-/// Ref to Archipelago, added if not present when Character is added
+/// Ref to Waymap, added if not present when Character is added
 #[derive(Component, Debug, Reflect)]
-#[relationship(relationship_target = ArchipelagoTiles)]
-pub struct TileArchipelago(pub Entity);
+#[relationship(relationship_target = WaymapTiles)]
+pub struct TileWaymap(pub Entity);
 
-#[derive(Component, Clone, Debug, Deref, DerefMut, Reflect)]
+
+/// Added to view mesh child of the tile, used for debug rendering
+#[derive(Component, Clone, Debug, Reflect)]
 #[reflect(Component)]
-pub struct TileNavMesh(pub Handle<NavigationMesh>);
+pub struct TileViewMesh;
 
-pub(crate) type TileBuildResult = Result<(NavigationMesh, Aabb3d, Mesh), ValidationError>;
+pub(crate) type TileBuildResult = Option<(TileNavMesh, Aabb3d, Mesh, Bvh)>;
 
-/// All Geometry collections are in local space of the tile
+
 pub(crate) async fn build_tile(
-    archipelago: Archipelago,
+    waymap: Nav,
     geometry_collections: Vec<GeometryCollection>,
     heightfield_collections: Vec<HeightFieldCollection>,
 ) -> TileBuildResult {
@@ -79,34 +73,37 @@ pub(crate) async fn build_tile(
     let _span = info_span!("Build Tile", name = "raven::build_tile").entered();
 
     let triangle_collection: Vec<TriangleCollection> = convert_geometry(geometry_collections);
-    let voxelized_tile = voxelization::build_heightfield_tile(&archipelago, triangle_collection, heightfield_collections);
-    let mut open_tile = voxelization::build_open_heightfield_tile(voxelized_tile, &archipelago);
-    voxelization::erode_walkable_area(&mut open_tile, &archipelago);
-    voxelization::calculate_distance_field(&mut open_tile, &archipelago);
-    regions::build_regions(&mut open_tile, &archipelago);
-    let contour_set = contour::build_contours(&open_tile, &archipelago);
-    let poly_tile = mesher::build_poly_mesh(contour_set, &archipelago, &open_tile);    
-    let nav_mesh = nav_mesh::build_nav_mesh(poly_tile.clone(), &archipelago)?;
-    let mesh = build_bevy_mesh(&poly_tile, &archipelago);
-    let Ok(aabb) = Aabb3d::from_points(nav_mesh.vertices.clone().into_iter()) else {
-        return Err(ValidationError::NoVertices);
-    };    
+    let voxelized_tile = voxelization::build_heightfield_tile(&waymap, triangle_collection, heightfield_collections);
+    let mut open_tile = voxelization::build_open_heightfield_tile(voxelized_tile, &waymap);
+    voxelization::erode_walkable_area(&mut open_tile, &waymap);
+    voxelization::calculate_distance_field(&mut open_tile, &waymap);
+    regions::build_regions(&mut open_tile, &waymap);
+    let contour_set = contour::build_contours(&open_tile, &waymap);
+    let poly_tile = mesher::build_poly_mesh(contour_set, &waymap, &open_tile);    
+    let nav_mesh = nav_mesh::build_tile_nav_mesh(poly_tile.clone(), &waymap);
+    let mesh = build_bevy_mesh(&poly_tile, &waymap);
     
+    
+    let Ok(aabb) = Aabb3d::from_points(nav_mesh.vertices.clone().into_iter()) else {      
+        // no vertices in nav mesh, can only happen when no walkable area is found  
+        return None;
+    };    
+    let bvh = Bvh::from(&mesh);
 
-    Ok((nav_mesh, aabb, mesh))
+    Some((nav_mesh, aabb, mesh, bvh))
 }
 
-fn build_bevy_mesh(poly_mesh: &PolyMesh, archipelago: &Archipelago) -> Mesh {
-    let tile_origin = archipelago.get_tile_minimum_bound_with_border();
+fn build_bevy_mesh(poly_mesh: &PolyMesh, waymap: &Nav) -> Mesh {
+    let tile_origin = waymap.get_tile_minimum_bound_with_border();
     let mut positions: Vec<[f32; 3]> = Vec::with_capacity(poly_mesh.vertices.len());
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(poly_mesh.vertices.len());
     let mut indices: Vec<u32> = Vec::with_capacity(poly_mesh.polygons.len() * 3);
 
     for v in poly_mesh.vertices.iter().map(|vertex| {
             Vec3::new(
-                tile_origin.x + vertex.x as f32 * archipelago.cell_width,
-                tile_origin.y + vertex.y as f32 * archipelago.cell_height,
-                tile_origin.z + vertex.z as f32 * archipelago.cell_width,
+                tile_origin.x + vertex.x as f32 * waymap.cell_width,
+                tile_origin.y + vertex.y as f32 * waymap.cell_height,
+                tile_origin.z + vertex.z as f32 * waymap.cell_width,
             )
         }) {        
         positions.push([v.x, v.y, v.z]);
@@ -125,17 +122,18 @@ fn build_bevy_mesh(poly_mesh: &PolyMesh, archipelago: &Archipelago) -> Mesh {
     );
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    
     mesh.insert_indices(Indices::U32(indices));
+
+
     mesh.duplicate_vertices();
     mesh.compute_flat_normals();
-    
-    
-    //mesh.compute_flat_normals();
+        
     mesh
 }
 
 /// Representation of a link between different polygons either internal to the tile or external (crossing over to another tile).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Reflect)]
 pub enum Link {
     Internal {
         /// Edge on self polygon.
@@ -158,7 +156,7 @@ pub enum Link {
 }
 
 /// A polygon within a nav-mesh tile.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Reflect)]
 pub struct NavPolygon {
     pub indices: [u32; VERTICES_IN_TRIANGLE],
     pub links: SmallVec<[Link; VERTICES_IN_TRIANGLE]>, // This becomes a mess memory wise with a ton of different small objects around.

@@ -7,7 +7,10 @@ use bevy::{
     render::view::RenderLayers,
 };
 
-use crate::{archipelago::*, nav_mesh::*, tile::*};
+use crate::{
+    tile::{nav_mesh::*, *},
+    nav::*,
+};
 
 #[derive(Default)]
 pub struct RavenDebugPlugin {
@@ -41,20 +44,29 @@ impl Plugin for RavenDebugPlugin {
 
 #[derive(Reflect, GizmoConfigGroup)]
 pub struct RavenGizmos {
-    
-    pub archipelago_bounds: Option<Color>,
+    pub waymap_bounds: Option<Color>,
     pub tile_bounds: Option<Color>,
     pub tile_polygons: Option<Color>,
-    pub tile_edges: Option<Color>,
+    pub tile_internal_links: Option<Color>,
+    pub tile_external_links: Option<Color>,
+
+    pub show_view_mesh: bool,
+    pub view_mesh_color: Color,
+    pub view_mesh_offset: Vec3,
 }
 
 impl Default for RavenGizmos {
     fn default() -> Self {
         Self {
-            archipelago_bounds: Some(tailwind::GRAY_300.with_alpha(0.5).into()),
-            tile_bounds: Some(tailwind::RED_100.with_alpha(0.5).into()),
-            tile_polygons: None, //Some(tailwind::GREEN_500.into()),
-            tile_edges: Some(tailwind::BLUE_500.into()),
+            waymap_bounds: Some(tailwind::GRAY_300.with_alpha(0.5).into()),
+            tile_bounds: Some(tailwind::RED_500.with_alpha(0.5).into()),
+            tile_polygons: Some(tailwind::BLUE_500.into()),            
+            tile_internal_links: None, // Some(tailwind::YELLOW_500.into()),            
+            tile_external_links: Some(tailwind::YELLOW_500.into()),            
+
+            show_view_mesh: true,
+            view_mesh_color: tailwind::BLUE_300.with_alpha(0.5).into(),
+            view_mesh_offset: Vec3::new(0.0, 0.1, 0.0),
         }
     }
 }
@@ -80,13 +92,13 @@ impl Default for RavenGizmos {
 // }
 
 fn draw_arhipelago_bounds(
-    archipelago_query: Query<(&GlobalTransform, &ArchipelagoAabb), With<Archipelago>>,
+    waymap_query: Query<(&GlobalTransform, &WaymapAabb), With<Nav>>,
     mut gizmos: Gizmos<RavenGizmos>,
     store: Res<GizmoConfigStore>,
 ) {
     let config = store.config::<RavenGizmos>().1;
-    if let Some(color) = config.archipelago_bounds {
-        for (&trans, bounding) in archipelago_query.iter() {
+    if let Some(color) = config.waymap_bounds {
+        for (&trans, bounding) in waymap_query.iter() {
             gizmos.cuboid(aabb3d_transform(&bounding.0, &trans), color);
         }
     }
@@ -107,96 +119,44 @@ fn draw_tile_bounds(
 
 fn draw_tiles(
     tile_query: Query<(&TileNavMesh, &GlobalTransform)>,
-    nav_meshs: Res<Assets<NavigationMesh>>,
     mut gizmos: Gizmos<RavenGizmos>,
     store: Res<GizmoConfigStore>,
 ) {
     let config = store.config::<RavenGizmos>().1;
-
-    for (navmesh_handle, trans) in tile_query.iter() {
-        let navmesh = nav_meshs.get(&navmesh_handle.0).unwrap();
-        for (polygon_index, polygon) in navmesh.polygons.iter().enumerate() {
-            // draw polygon triangles
+    for (tile, trans) in tile_query.iter() {
+        for poly in tile.polygons.iter() {
             if let Some(color) = config.tile_polygons {
-                let center_point = trans.transform_point(polygon.center);
-                for i in 0..polygon.vertices.len() {
-                    let j = (i + 1) % polygon.vertices.len();
-
-                    let i = polygon.vertices[i];
-                    let j = polygon.vertices[j];
-
-                    gizmos.linestrip(
-                        [
-                            trans.transform_point(navmesh.vertices[i]),
-                            trans.transform_point(navmesh.vertices[j]),
-                            center_point,
-                        ],
-                        color,
-                    );
+                let indices = &poly.indices;
+                for i in 0..indices.len() {
+                    let a = tile.vertices[indices[i] as usize];
+                    let b = tile.vertices[indices[(i + 1) % indices.len()] as usize];                    
+                    gizmos.line(trans.transform_point(a), trans.transform_point(b), color);
                 }
             }
 
-            // draw island edges
-            if let Some(color) = config.tile_edges {
-                for (edge_index, connection) in polygon.connectivity.iter().enumerate() {
-                    let _line_type = match connection.as_ref() {
-                        None => LineType::BoundaryEdge,
-                        Some(connection) => {
-                            // Ignore connections where the connected polygon has a greater
-                            // index. This prevents drawing the same edge multiple
-                            // times by picking one of the edges to draw.
-                            if polygon_index > connection.polygon_index {
-                                continue;
-                            }
-                            LineType::ConnectivityEdge
+            for link in &poly.links {
+                // Only draw links that connect to a polygon with a greater index
+                // to avoid drawing the same link multiple times.
+                match link {
+                    Link::Internal { edge, neighbour_polygon: _ } => {
+                        if let Some(color) = config.tile_internal_links {
+                             let a = tile.vertices[poly.indices[*edge as usize] as usize];
+                             gizmos.line(trans.transform_point(a), trans.transform_point(a + Vec3::Y * 0.2), color);
                         }
-                    };
-
-                    let i = edge_index;
-                    let j = (i + 1) % polygon.vertices.len();
-
-                    let i = polygon.vertices[i];
-                    let j = polygon.vertices[j];
-
-                    gizmos.line(
-                        trans.transform_point(navmesh.vertices[i]),
-                        trans.transform_point(navmesh.vertices[j]),
-                        color,
-                    );
-                }
+                    },
+                    Link::External { edge, neighbour_polygon: _, direction: _, bound_min: _, bound_max: _ } => {
+                        if let Some(color) = config.tile_external_links {
+                            let a = tile.vertices[poly.indices[*edge as usize] as usize];
+                            gizmos.line(trans.transform_point(a), trans.transform_point(a + Vec3::Y * 0.2), color);
+                        }
+                    },
+                }   
             }
-
-            // let node_ref = NodeRef { island_id, polygon_index };
-            // if let Some(boundary_link_ids) =
-            //     archipelago.nav_data.node_to_boundary_link_ids.get(&node_ref)
-            // {
-            //     for &boundary_link_id in boundary_link_ids.iter() {
-            //     let boundary_link = archipelago
-            //         .nav_data
-            //         .boundary_links
-            //         .get(boundary_link_id)
-            //         .expect("Boundary links are present.");
-            //     // Ignore links where the connected node has a greater node_ref. This
-            //     // prevents drawing the same link multiple times by picking one of the
-            //     // links to draw.
-            //     if node_ref > boundary_link.destination_node {
-            //         continue;
-            //     }
-
-            //     debug_drawer.add_line(
-            //         LineType::BoundaryLink,
-            //         [
-            //         CS::from_landmass(&boundary_link.portal.0),
-            //         CS::from_landmass(&boundary_link.portal.1),
-            //         ],
-            //     );
-            //     }
-            // }
         }
     }
 }
 
-pub fn aabb3d_transform(bounding: &Aabb3d, transform: &GlobalTransform) -> GlobalTransform {
+pub(crate) fn aabb3d_transform(bounding: &Aabb3d, transform: &GlobalTransform) -> GlobalTransform {
     *transform
         * GlobalTransform::from(
             Transform::from_translation(bounding.center().into())
@@ -204,7 +164,7 @@ pub fn aabb3d_transform(bounding: &Aabb3d, transform: &GlobalTransform) -> Globa
         )
 }
 
-pub fn aabb3d_global(bounding: &Aabb3d) -> GlobalTransform {
+pub(crate) fn aabb3d_global(bounding: &Aabb3d) -> GlobalTransform {
     GlobalTransform::from(
         Transform::from_translation(bounding.center().into())
             .with_scale((bounding.max - bounding.min).into()),

@@ -1,34 +1,16 @@
 [package]
-name = "raven"
+name = "raven_nav"
 version = "0.1.0"
 edition = "2024"
 
-# Enable a small amount of optimization in the dev profile.
 [profile.dev]
 opt-level = 1
 
-[profile.wasm-dev]
-inherits = "dev"
-opt-level = 1
-
-[profile.server-dev]
-inherits = "dev"
-
-[profile.android-dev]
-inherits = "dev"
-
-# Enable a large amount of optimization in the dev profile for dependencies.
 # [profile.dev.package."*"]
 # opt-level = 3
 
-
 [features]
-default = [ 
-    "hot",
-    "bevy/wayland",
-    "bevy/dynamic_linking",    
-] 
-hot = []
+default = []
 view_mesh = []
 debug_draw = [
     "bevy/bevy_gizmos",
@@ -37,20 +19,19 @@ debug_draw = [
 trace = [
     "bevy/trace"
 ]
-heightfield-prune = []
 
 [dependencies]
 bevy = "0.16"
+#raven_bvh = { git = "https://github.com/slyedoc/raven_bvh.git", features = ["camera"] }
+raven_bvh = { path = "../raven_bvh", features = ["camera"] }
 avian3d = "0.3"
-smallvec = { version = "1.11", default-features = false }
-thiserror = "1.0"
-disjoint = "0.8.0"
+smallvec = { version = "1.15", default-features = false }
+#thiserror = "1.0"
+#disjoint = "0.8.0"
 bevy-inspector-egui = { version = "0.31" }
-
 crossbeam-channel = { version = "0.5" }
-
-# Not working, see https://github.com/DioxusLabs/dioxus/issues/4160
-bevy_simple_subsecond_system = { git = "https://github.com/TheBevyFlock/bevy_simple_subsecond_system", version = "0.2.0" }
+strum_macros = "0.27.1"
+strum = "0.27.1"
 
 [dev-dependencies]
 bevy = "0.16"
@@ -59,6 +40,7 @@ bevy_enhanced_input = "0.11"
 #sly_editor = { git = "https://github.com/slyedoc/sly_editor.git", features = ["avian3d"]}
 sly_editor = { path = "../sly_editor", features = ["avian3d"]}
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+
 
 [[example]]
 name = "simple"

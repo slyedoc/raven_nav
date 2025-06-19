@@ -7,17 +7,54 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'raven'",
+            "name": "Debug unit tests in library 'raven_nav'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
                     "--lib",
-                    "--package=raven"
+                    "--package=raven_nav"
                 ],
                 "filter": {
-                    "name": "raven",
+                    "name": "raven_nav",
                     "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'agent'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=agent",
+                    "--package=raven_nav"
+                ],
+                "filter": {
+                    "name": "agent",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in example 'agent'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--example=agent",
+                    "--package=raven_nav"
+                ],
+                "filter": {
+                    "name": "agent",
+                    "kind": "example"
                 }
             },
             "args": [],
@@ -31,7 +68,7 @@
                 "args": [
                     "build",
                     "--example=cubes",
-                    "--package=raven"
+                    "--package=raven_nav"
                 ],
                 "filter": {
                     "name": "cubes",
@@ -50,29 +87,10 @@
                     "test",
                     "--no-run",
                     "--example=cubes",
-                    "--package=raven"
+                    "--package=raven_nav"
                 ],
                 "filter": {
                     "name": "cubes",
-                    "kind": "example"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-         {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug example 'agent'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--example=agent",
-                    "--package=raven",
-                    "--features=debug_draw,bevy/wayland"
-                ],
-                "filter": {
-                    "name": "agent",
                     "kind": "example"
                 }
             },
@@ -87,8 +105,7 @@
                 "args": [
                     "build",
                     "--example=heightfield",
-                    "--package=raven",
-                    "--features=debug_draw,bevy/wayland"
+                    "--package=raven_nav"
                 ],
                 "filter": {
                     "name": "heightfield",
@@ -107,10 +124,47 @@
                     "test",
                     "--no-run",
                     "--example=heightfield",
-                    "--package=raven"
+                    "--package=raven_nav"
                 ],
                 "filter": {
                     "name": "heightfield",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'multi'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=multi",
+                    "--package=raven_nav"
+                ],
+                "filter": {
+                    "name": "multi",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in example 'multi'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--example=multi",
+                    "--package=raven_nav"
+                ],
+                "filter": {
+                    "name": "multi",
                     "kind": "example"
                 }
             },
@@ -125,7 +179,7 @@
                 "args": [
                     "build",
                     "--example=simple",
-                    "--package=raven"
+                    "--package=raven_nav"
                 ],
                 "filter": {
                     "name": "simple",
@@ -144,7 +198,7 @@
                     "test",
                     "--no-run",
                     "--example=simple",
-                    "--package=raven"
+                    "--package=raven_nav"
                 ],
                 "filter": {
                     "name": "simple",

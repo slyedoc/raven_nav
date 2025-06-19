@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use bevy::prelude::*;
 
 use crate::{
-    archipelago::Archipelago,
+    nav::Nav,
     collider::Area,
     tile::{        
         voxelization::{OpenSpan, OpenTile},
@@ -43,7 +43,7 @@ struct ContourRegion {
     holes: Vec<ContourHole>,
 }
 
-pub(crate) fn build_contours(open_tile: &OpenTile, vox_settings: &Archipelago) -> ContourSet {
+pub(crate) fn build_contours(open_tile: &OpenTile, vox_settings: &Nav) -> ContourSet {
     #[cfg(feature = "trace")]
     let _span = info_span!("raven::build_contours").entered();
 
@@ -393,7 +393,7 @@ fn walk_contour(
     mut cell_index: usize,
     mut span_index: usize,
     tile: &OpenTile,
-    vox_settings: &Archipelago,
+    vox_settings: &Nav,
     boundry_flags: &mut [u8],
     contour: &mut Vec<u32>,
 ) {
@@ -460,7 +460,7 @@ fn get_corner_height(
     cell_index: usize,
     span: &OpenSpan,
     tile: &OpenTile,
-    vox_settings: &Archipelago,
+    vox_settings: &Nav,
     dir: u8,
 ) -> u16 {
     let tile_side = vox_settings.get_tile_side_with_border();

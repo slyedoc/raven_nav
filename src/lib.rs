@@ -1,156 +1,159 @@
+#![allow(warnings)]
+#![allow(unused_variables)]
+
 #![feature(test)]
 extern crate test;
 
-#[cfg(feature = "hot")]
-use bevy_simple_subsecond_system::prelude::*;
-
 mod agent;
-mod archipelago;
 mod character;
 mod collider;
 #[cfg(feature = "debug_draw")]
 pub mod debug_draw;
-mod utils;
-#[cfg(feature = "debug_draw")]
-use debug_draw::*;
 mod math;
 mod nav_ray_cast;
-mod tile;
-
 mod path_finding;
-use agent::*;
-use archipelago::*;
+pub mod tile;
+mod utils;
+mod nav;
 
+use crate::nav_ray_cast::NavLinks;
+use agent::*;
 use character::*;
 use collider::*;
-use nav_mesh::*;
+#[cfg(feature = "debug_draw")]
+use debug_draw::*;
 use nav_ray_cast::*;
-use path_finding::*;
-use tile::*;
-
-use std::{process::Child, sync::Arc};
+use raven_bvh::prelude::*;
+use tile::{
+    Tile, TileAabb, TileAffectors, TileMeshAabb, TileViewMesh, TileWaymap, build_tile,
+    nav_mesh::TileNavMesh,
+};
+use nav::*;
 
 use avian3d::{
     parry::{math::Isometry, na::Vector3, shape::HeightField},
     prelude::*,
 };
 use bevy::{
-    color::palettes::tailwind, ecs::entity::EntityHashMap, log::tracing_subscriber::filter::combinator::Not, math::bounding::{Aabb3d, RayCast3d}, pbr::NotShadowCaster, platform::collections::HashSet, prelude::*, tasks::{futures_lite::future, AsyncComputeTaskPool}
+    color::palettes::tailwind,
+    ecs::entity::EntityHashMap,
+    math::bounding::{Aabb3d, RayCast3d},
+    pbr::NotShadowCaster,
+    platform::collections::HashSet,
+    prelude::*,
+    tasks::{AsyncComputeTaskPool, futures_lite::future},
 };
+use std::sync::Arc;
 
 pub mod prelude {
     #[cfg(feature = "debug_draw")]
     pub use crate::debug_draw::*;
-    pub use crate::{RavenPlugin, agent::*, archipelago::*, character::*, collider::*};
+    pub use crate::{NavPlugin, agent::*, character::*, collider::*, tile::*, nav::*, nav_ray_cast::*, utils::*};
 }
 
-pub struct RavenPlugin;
+pub struct NavPlugin;
 
-impl Plugin for RavenPlugin {
+impl Plugin for NavPlugin {
     fn build(&self, app: &mut App) {
-        #[cfg(feature = "hot")]
-        app.add_plugins(SimpleSubsecondPlugin::default());
+        if !app.is_plugin_added::<BvhPlugin>() {
+            app.add_plugins(BvhPlugin);
+        }
 
-        app.init_asset::<NavigationMesh>()
-            .init_resource::<PathingResults>()
-            .add_systems(
-                Update,
-                (
-                    archipelago_changed,
-                    handle_removed_affectors, //.in_set(OxidizedNavigation::Main),
-                    update_tile_build_tasks,
-                )
-                    .chain(),
+        app.add_systems(
+            Update,
+            (
+                waymap_changed,
+                handle_removed_affectors, //.in_set(OxidizedNavigation::Main),
             )
-            .add_systems(
-                PostUpdate,
-                (
-                    update_navmesh_affectors,
-                    (add_agents_to_archipelago, add_characters_to_archipelago),
-                    start_tile_build_tasks,
-                    update_tile_build_tasks,
-                    update_navigation, //navigation::update_navigation.run_if(input_pressed(KeyCode::Space))
-                )
-                    .chain()
-                    .after(TransformSystem::TransformPropagate),
+                .chain(),
+        )
+        .add_systems(
+            PostUpdate,
+            (
+                update_navmesh_affectors,
+                (add_agents_to_waymap, add_characters_to_waymap),
+                start_tile_build_tasks,
+                poll_tile_build_tasks,
+                update_navigation, //navigation::update_navigation.run_if(input_pressed(KeyCode::Space))
             )
-            .register_type::<Agent>()
-            .register_type::<AgentSettings>()
-            .register_type::<AgentArchipelago>()
-            .register_type::<Character>()
-            .register_type::<CharacterSettings>()
-            .register_type::<CharacterArchipelago>()
-            .register_type::<TileAffectors>()
-            .register_type::<Tile>()
-            .register_type::<Handle<NavigationMesh>>()
-            .register_type::<TileNavMesh>()
-            .register_type::<Archipelago>()
-            .register_type::<archipelago::TileLookup>()
-            .register_type::<archipelago::ArchipelagoAgents>()
-            .register_type::<archipelago::ArchipelagoCharacters>();
+                .chain()
+                .after(TransformSystem::TransformPropagate)
+                .after(BvhSystems::Update),
+
+        )
+        .register_type::<Agent>()
+        .register_type::<AgentSettings>()
+        .register_type::<AgentWaymap>()
+        .register_type::<Character>()
+        .register_type::<CharacterSettings>()
+        .register_type::<CharacterWaymap>()
+        .register_type::<TileAffectors>()
+        .register_type::<Tile>()
+        .register_type::<TileNavMesh>()
+        .register_type::<Nav>()
+        .register_type::<TileLookup>()
+        .register_type::<WaymapAgents>()
+        .register_type::<WaymapCharacters>();
     }
 }
 
 pub fn update_navigation(
-    mut pathing_results: ResMut<PathingResults>,
-    mut arch_query: Query<&ArchipelagoAgents, With<Archipelago>>,
+    mut arch_query: Query<(Entity, &WaymapAgents, &Tlas), With<Nav>>,
     agent_query: Query<(&GlobalTransform, &AgentState), With<Agent>>,
-    mut nav_mesh_cast: NavRayCast,
+    // mut nav_mesh_cast: NavRayCast,
+    tlas_cast: TlasCast,
     #[cfg(feature = "debug_draw")] mut gizmos: Gizmos<RavenGizmos>,
 ) {
-    pathing_results.clear();
-
-    for archipelago_agents in arch_query.iter_mut() {
-        for agent_entity in archipelago_agents.iter() {
+    for (nav_entity, waymap_agents, tlas) in arch_query.iter_mut() {
+        for agent_entity in waymap_agents.iter() {
             if let Ok((agent_transform, _agent_state)) = agent_query.get(agent_entity) {
                 let point = agent_transform.translation();
                 let ray = RayCast3d::new(point, Dir3::NEG_Y, 2.);
-                if let Some((entity, hit)) = nav_mesh_cast.cast_ray(ray) {
+
+                #[cfg(feature = "debug_draw")]
+                gizmos.line(point, ray.get_point(ray.max).into(), tailwind::YELLOW_400);
+                if let Some((_entity, hit)) =  tlas_cast.intersect_tlas(&ray, nav_entity) {
                     #[cfg(feature = "debug_draw")]
-                    gizmos.line(point, hit.point, tailwind::FUCHSIA_500);
+                    gizmos.line(point, ray.get_point(hit.distance).into(), tailwind::FUCHSIA_500);
                 }
             }
         }
     }
 }
 
-// TODO: use arch bounding to find first available archipelago
-/// Add archipelago refs to agents if not present
-/// Only works when one archipelago exists, if not you need to set CharacterArchipelago yourself when spawning the character.
+// TODO: use arch bounding to find first available waymap
+/// Add waymap refs to agents if not present
+/// Only works when one waymap exists, if not you need to set CharacterWaymap yourself when spawning the character.
 #[allow(dead_code)]
-fn add_agents_to_archipelago(
+fn add_agents_to_waymap(
     mut commands: Commands,
-    mut query: Query<Entity, (Without<CharacterArchipelago>, Added<Agent>)>,
-    archipelago: Single<Entity, With<Archipelago>>,
+    mut query: Query<Entity, (Without<CharacterWaymap>, Added<Agent>)>,
+    waymap: Single<Entity, With<Nav>>,
 ) {
     for e in query.iter_mut() {
-        commands.entity(e).insert(AgentArchipelago(*archipelago));
+        commands.entity(e).insert(AgentWaymap(*waymap));
     }
 }
 
-// TODO: use arch bounding to find first available archipelago
-/// Add archipelago refs to characters if not present
-/// Only works when one archipelago exists, if not you need to set CharacterArchipelago yourself when spawning the character.
+// TODO: use arch bounding to find first available waymap
+/// Add waymap refs to characters if not present
+/// Only works when one waymap exists, if not you need to set CharacterWaymap yourself when spawning the character.
 #[allow(dead_code)]
-fn add_characters_to_archipelago(
+fn add_characters_to_waymap(
     mut commands: Commands,
-    mut query: Query<Entity, (Without<CharacterArchipelago>, Added<Character>)>,
-    archipelago: Single<Entity, With<Archipelago>>,
+    mut query: Query<Entity, (Without<CharacterWaymap>, Added<Character>)>,
+    waymap: Single<Entity, With<Nav>>,
 ) {
     for e in query.iter_mut() {
-        commands
-            .entity(e)
-            .insert(CharacterArchipelago(*archipelago));
+        commands.entity(e).insert(CharacterWaymap(*waymap));
     }
 }
-
-///
 
 #[expect(clippy::type_complexity)]
 fn update_navmesh_affectors(
     mut commands: Commands,
-    mut archipelago_query: Query<
-        (&Archipelago, &GlobalTransform, &TileLookup, &mut DirtyTiles),
+    mut waymap_query: Query<
+        (&Nav, &GlobalTransform, &TileLookup, &mut DirtyTiles),
         Without<Tile>,
     >,
     mut tile_query: Query<&mut TileAffectors, With<Tile>>,
@@ -174,9 +177,9 @@ fn update_navmesh_affectors(
         ),
     >,
 ) {
-    for (archipelago, arch_transform, lookup, mut dirty_tiles) in archipelago_query.iter_mut() {
+    for (waymap, arch_transform, lookup, mut dirty_tiles) in waymap_query.iter_mut() {
         // Expand by 2 * walkable_radius to match with erode_walkable_area.
-        let border_expansion = f32::from(archipelago.walkable_radius * 2) * archipelago.cell_width;
+        let border_expansion = f32::from(waymap.walkable_radius * 2) * waymap.cell_width;
 
         for (e, collider, global_transform, has_update) in collider_query.iter_mut() {
             let transform = global_transform.compute_transform();
@@ -197,13 +200,13 @@ fn update_navmesh_affectors(
                 aabb.mins.x - border_expansion,
                 aabb.mins.z - border_expansion,
             );
-            let min_tile = archipelago.get_tile_containing_position(min_vec, arch_transform);
+            let min_tile = waymap.get_tile_containing_position(min_vec, arch_transform);
 
             let max_vec = Vec2::new(
                 aabb.maxs.x + border_expansion,
                 aabb.maxs.z + border_expansion,
             );
-            let max_tile = archipelago.get_tile_containing_position(max_vec, arch_transform);
+            let max_tile = waymap.get_tile_containing_position(max_vec, arch_transform);
 
             // TODO: looping though all tiles for every collider not ideal,
             // maybe use sensors collisions? need to bench this vs old way way, but tile affectors and NavMeshAffectorRelations
@@ -230,18 +233,18 @@ fn update_navmesh_affectors(
     }
 }
 
-fn archipelago_changed(
+fn waymap_changed(
     mut commands: Commands,
     mut query: Query<
         (
             Entity,
-            &Archipelago,
-            &ArchipelagoTiles,
-            &mut ActiveGenerationTasks,
+            &Nav,
+            &WaymapTiles,
+            &mut WaymapGenerationTasks,
             &mut TileLookup,
             &mut DirtyTiles,
         ),
-        (Or<(Changed<Transform>, Changed<Archipelago>)>,),
+        (Or<(Changed<Transform>, Changed<Nav>)>,),
     >,
     mut collider_query: Query<
         Entity,
@@ -258,7 +261,7 @@ fn archipelago_changed(
         dirty.clear();
 
         // setup bounding box
-        commands.entity(e).insert(ArchipelagoAabb(Aabb3d::new(
+        commands.entity(e).insert(WaymapAabb(Aabb3d::new(
             Vec3A::ZERO,
             arch.world_half_extents,
         )));
@@ -285,8 +288,8 @@ fn archipelago_changed(
                         Tile(tile),
                         TileAabb(Aabb3d::new(Vec3::ZERO, tile_half_extends)),
                         Transform::from_translation(translation),
-                        TileArchipelago(e),
-                        ChildOf(e), // duplicated with TileArchipelago, but may have more children in the future
+                        TileWaymap(e),
+                        ChildOf(e), // duplicated with TileWaymap, but may have more children in the future
                     ))
                     .id();
                 lookup.insert(tile, tile_id);
@@ -317,22 +320,22 @@ fn start_tile_build_tasks(
     mut commands: Commands,
     mut tiles_to_generate: Local<Vec<UVec2>>,
     mut heightfields: Local<EntityHashMap<Arc<HeightField>>>,
-    mut archipelago_query: Query<(
-        &Archipelago,
+    mut waymap_query: Query<(
+        &Nav,
         &TileLookup,
         &mut DirtyTiles,
-        &mut ActiveGenerationTasks,
+        &mut WaymapGenerationTasks,
     )>,
     mut tile_query: Query<(&TileAffectors, &GlobalTransform), With<Tile>>,
     collider_query: Query<(Entity, &Collider, &GlobalTransform, &NavMeshAffector)>,
 ) {
     let thread_pool = AsyncComputeTaskPool::get();
 
-    for (archipelago, tile_lookup, mut dirty_tiles, mut active_generation_tasks) in
-        archipelago_query.iter_mut()
+    for (waymap, tile_lookup, mut dirty_tiles, mut active_generation_tasks) in
+        waymap_query.iter_mut()
     {
         // see if we can start a new task
-        let max = archipelago.max_tile_generation_tasks.get() as usize;
+        let max = waymap.max_tile_generation_tasks.get() as usize;
         let active = active_generation_tasks.0.len();
         if dirty_tiles.0.is_empty() || active >= max {
             continue;
@@ -386,9 +389,8 @@ fn start_tile_build_tasks(
             // Step 3: Start Build Task.
             active_generation_tasks.0.push(NavMeshGenerationJob {
                 entity: *tile_enity,
-                //generation: tile_generation.0,
                 task: thread_pool.spawn(build_tile(
-                    archipelago.clone(),
+                    waymap.clone(),
                     geometry_collections,
                     heightfield_collections,
                 )),
@@ -399,68 +401,86 @@ fn start_tile_build_tasks(
 }
 
 /// Checks status of tile builds
-fn update_tile_build_tasks(
+fn poll_tile_build_tasks(
     mut commands: Commands,
-    mut archipelago_query: Query<&mut ActiveGenerationTasks, With<Archipelago>>,
-    mut nav_meshes: ResMut<Assets<NavigationMesh>>,
+    mut waymap_query: Query<(Entity, &mut WaymapGenerationTasks, &mut TlasRebuildStrategy), With<Nav>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut bvhs: ResMut<Assets<Bvh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut changed_tiles: Local<Vec<Entity>>,
+    mut nav_edit_links: NavLinks,
+    #[cfg(feature = "debug_draw")] store: Res<GizmoConfigStore>,
 ) {
-    for mut tasks in archipelago_query.iter_mut() {
+    #[cfg(feature = "debug_draw")]
+    let config = store.config::<RavenGizmos>().1;
+    for (e, mut tasks, mut strat) in waymap_query.iter_mut() {
         // check active tasks, canceling if not current
         tasks.0.retain_mut(|job| {
             if let Some(result) = future::block_on(future::poll_once(&mut job.task)) {
+                let tile_entity = job.entity;
                 match result {
-                    Ok((nav_mesh, aabb, mesh)) => {
-                        changed_tiles.push(job.entity);
-                        commands
-                            .entity(job.entity)
-                            .insert(TileNavMesh(nav_meshes.add(nav_mesh)))
-                            .insert(TileMeshAabb(aabb));
+                    // 
+                    Some((mut tile_nav_mesh, aabb, mesh, bvh)) => {                   
+                        // Update links to neighbours,
+                        nav_edit_links.update_tile_links(tile_entity, &mut tile_nav_mesh);
 
-                        // view mesh, for debugging
-                        //#[cfg(feature = "view_mesh")]
+                        // Update the tile nav mesh
+                        commands
+                            .entity(job.entity)                            
+                            .insert((
+                                tile_nav_mesh,
+                                MeshBvh(bvhs.add(bvh)),
+                                TlasTarget(e),
+                                TileMeshAabb(aabb)                                
+                            ));
+
+                        // adding view mesh as child so we can use Tranform to offset
+                        #[cfg(feature = "debug_draw")]
                         commands.spawn((
                             ChildOf(job.entity),
+                            TileViewMesh,
                             Mesh3d(meshes.add(mesh)),
                             MeshMaterial3d(materials.add(StandardMaterial {
-                                base_color: tailwind::BLUE_500.with_alpha(0.3).into(),
+                                base_color: config.view_mesh_color.into(),
                                 unlit: true,
                                 alpha_mode: AlphaMode::Blend,
                                 ..default()
                             })),
-                            NotShadowCaster,                            
-                            Transform::from_xyz(0.0, 0.1, 0.0),
+                            NotShadowCaster,
+                            Pickable::IGNORE,
+                            Transform::from_translation(config.view_mesh_offset),
+                            match config.show_view_mesh {
+                                true => Visibility::Visible,
+                                false => Visibility::Hidden,
+                            },
                         ));
                     }
-                    Err(err) => {
-                        warn!("Failed to generate oxidized_navigation tile: {err:?}");
-                        // remove existing nav mesh if any
+                    None => {
+                        // Remove any links to this tile
+                        nav_edit_links.remove_tile(tile_entity);
+
                         commands
-                            .entity(job.entity)
+                            .entity(tile_entity)
                             .remove::<TileNavMesh>()
                             .remove::<TileMeshAabb>()
                             .remove::<Children>(); // should delete view mesh
                     }
                 }
+                // trigger a rebuild of the tlas
+                *strat = TlasRebuildStrategy::Mannual(true);
+
+
                 return false;
             }
             true
         });
-    }
-
-    // rebuild links for changed tiles
-    for tile_entity in changed_tiles.drain(..) {
-        // TODO:
     }
 }
 
 /// Update the tiles when the NavMeshAffector is removed.
 fn handle_removed_affectors(
     mut removed_affectors: RemovedComponents<NavMeshAffector>,
-    mut tile_query: Query<(&Tile, &mut TileAffectors, &TileArchipelago)>,
-    mut archipelago_query: Query<&mut DirtyTiles, With<Archipelago>>,
+    mut tile_query: Query<(&Tile, &mut TileAffectors, &TileWaymap)>,
+    mut waymap_query: Query<&mut DirtyTiles, With<Nav>>,
     mut removed: Local<HashSet<Entity>>,
     mut intersection: Local<Vec<Entity>>,
 ) {
@@ -472,7 +492,7 @@ fn handle_removed_affectors(
             continue;
         }
         // mark the tile as dirty
-        let mut arch_dirty = archipelago_query.get_mut(arch.0).unwrap();
+        let mut arch_dirty = waymap_query.get_mut(arch.0).unwrap();
         arch_dirty.0.insert(tile.0);
 
         // remove from the tile

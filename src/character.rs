@@ -1,15 +1,15 @@
 use bevy::prelude::*;
 
-use crate::{agent::Velocity, archipelago::ArchipelagoCharacters};
+use crate::{agent::Velocity, nav::WaymapCharacters};
 
 #[derive(Component, Reflect)]
 #[require(Transform, Velocity, CharacterSettings)]
 pub struct Character;
 
-/// Ref to Archipelago, added if not present when Character is added
+/// Ref to Waymap, added if not present when Character is added
 #[derive(Component, Debug, Reflect)]
-#[relationship(relationship_target = ArchipelagoCharacters)]
-pub struct CharacterArchipelago(pub Entity);
+#[relationship(relationship_target = WaymapCharacters)]
+pub struct CharacterWaymap(pub Entity);
 
 /// A character's settings. See [`crate::CharacterBundle`] for required related
 /// components.

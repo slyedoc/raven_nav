@@ -49,13 +49,11 @@ pub enum GeometryToConvert {
     ParryTriMesh(Box<[Point3<f32>]>, Box<[[u32; 3]]>),
 }
 
-
 pub struct GeometryCollection {
     pub transform: GlobalTransform,
     pub geometry_to_convert: GeometryToConvert,
     pub area: Option<Area>,
 }
-
 
 pub(super) struct TriangleCollection {
     pub(super) transform: GlobalTransform,
@@ -65,7 +63,8 @@ pub(super) struct TriangleCollection {
 
 pub struct HeightFieldCollection {
     pub transform: GlobalTransform,
-    pub heightfield: Arc<shape::HeightField>, //
+    // snice heightfields are shared, we use an Arc to avoid cloning them
+    pub heightfield: Arc<shape::HeightField>,
     pub area: Option<Area>,
 }
 
