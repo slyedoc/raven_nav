@@ -3,7 +3,6 @@ use common::*;
 
 use avian3d::prelude::*;
 use bevy::{prelude::*, window::WindowResolution};
-use raven_bvh::prelude::BvhCamera;
 use raven_nav::prelude::*;
 
 fn main() {
@@ -62,7 +61,7 @@ fn setup(
     ));
 
     // heightfield
-    let resolution = 250;
+    let resolution = 250; // is this large?
     let oct = 10.0;
     let height_scale = 8.0;
     let scale = Vec3::new(resolution as f32, height_scale, resolution as f32);

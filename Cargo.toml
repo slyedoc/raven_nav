@@ -24,10 +24,10 @@ trace = [
 bevy = "0.16"
 #raven_bvh = { git = "https://github.com/slyedoc/raven_bvh.git", features = ["camera"] }
 raven_bvh = { path = "../raven_bvh", features = ["camera"] }
+#raven_util = { git = "https://github.com/slyedoc/raven_bvh.git", features = ["camera"] }
+raven_util = { path = "../raven_util", features = [] }
 avian3d = "0.3"
 smallvec = { version = "1.15", default-features = false }
-#thiserror = "1.0"
-#disjoint = "0.8.0"
 bevy-inspector-egui = { version = "0.31" }
 crossbeam-channel = { version = "0.5" }
 strum_macros = "0.27.1"
@@ -57,3 +57,8 @@ required-features = ["debug_draw"]
 [[example]]
 name = "agent"
 required-features = ["debug_draw"]
+
+[[bench]]
+name = "common"
+required-features = []
+harness = true

@@ -34,17 +34,29 @@ impl Plugin for ExampleCommonPlugin {
         .init_resource::<AgentSpawner>()
         .add_systems(
             Update,
-            toggle_debug_draw.run_if(input_just_pressed(KeyCode::KeyN)),
+            (
+                cycle_debug.run_if(input_just_pressed(KeyCode::Space)),
+                toggle_debug_draw.run_if(input_just_pressed(KeyCode::KeyN)),
+            ),
         )
         .add_systems(Startup, setup_key_instructions);
     }
+}
+
+fn cycle_debug(mut debug_mode: ResMut<NavDebugMode>) {
+    *debug_mode = match *debug_mode {
+        NavDebugMode::Disabled => NavDebugMode::Mesh,
+        NavDebugMode::Mesh => NavDebugMode::Wireframe,
+        NavDebugMode::Wireframe => NavDebugMode::Disabled,
+    };
+    info!("Debug mode: {:?}", *debug_mode.as_ref());
 }
 
 fn toggle_debug_draw(
     mut store: ResMut<GizmoConfigStore>,
     mut query: Query<&mut Visibility, With<TileViewMesh>>,
 ) {
-    let (gizmo_config, config) = store.config_mut::<RavenGizmos>();
+    let (gizmo_config, config) = store.config_mut::<NavGizmos>();
     gizmo_config.enabled = !gizmo_config.enabled;
 
     for mut visibility in query.iter_mut() {

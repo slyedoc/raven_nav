@@ -4657,10 +4657,18 @@ dependencies = [
  "crossbeam-channel",
  "log",
  "raven_bvh",
+ "raven_util",
  "sly_editor",
  "smallvec",
  "strum 0.27.1",
  "strum_macros 0.27.1",
+]
+
+[[package]]
+name = "raven_util"
+version = "0.1.0"
+dependencies = [
+ "bevy",
 ]
 
 [[package]]

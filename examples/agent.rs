@@ -53,7 +53,7 @@ fn setup(
             hdr: true,
             ..default()
         },
-        Transform::from_xyz(0.0, 2.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(0.0, 2.0, -5.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
     commands.spawn((
@@ -164,35 +164,56 @@ fn setup(
 }
 
 fn ray_cast(
+    agent: Single<&GlobalTransform, With<Agent>>,
     camera_query: Single<(&Camera, &GlobalTransform)>,
     window: Single<&Window>,
     tlas_query: Single<Entity, (With<Nav>, With<Tlas>)>,
     tlas: TlasCast,
     mut gizmos: Gizmos,
-    //input: Res<ButtonInput<MouseButton>>,
+    mut nav_path: NavPath,
+    input: Res<ButtonInput<MouseButton>>,
+    mut start_pos: Local<Vec3>,
+    mut end_pos: Local<Vec3>,
 ) {
     let (camera, camera_transform) = *camera_query;
     let tlas_entity = *tlas_query;
+    
+    // Use Right mouse buttons to set start 
+    if input.pressed(MouseButton::Right) {        
+        let Some(cursor_position) = window.cursor_position() else {
+            return;
+        };
+        let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_position) else {
+            return;
+        };
 
-    let Some(cursor_position) = window.cursor_position() else {
-        return;
-    };
-
-    // Calculate a ray pointing from the camera into the world based on the cursor's position.
-    let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_position) else {
-        return;
-    };
-
-    let ray_cast = RayCast3d::from_ray(ray, 100.0);
-
-    gizmos.line(
-        ray_cast.origin.into(),
-        ray_cast.get_point(100.0).into(),
-        tailwind::RED_400,
-    );
-    if let Some((_e, hit)) = tlas.intersect_tlas(&ray_cast, tlas_entity) {
-        //let p : Vec3 =  ray_cast.get_point(hit.distance).into();
-        gizmos.sphere(ray.get_point(hit.distance), 0.1, tailwind::GREEN_400);
-        //gizmos.sphere(hit.point, 0.1, tailwind::GREEN_400);
+        let ray_cast = RayCast3d::from_ray(ray, 100.0);
+        if let Some((_e, hit)) = tlas.intersect_tlas(&ray_cast, tlas_entity) {        
+            *start_pos = ray.get_point(hit.distance);
+        }
     }
+
+    // Use Left mouse button to set end
+    if input.pressed(MouseButton::Left) {        
+        let Some(cursor_position) = window.cursor_position() else {
+            return;
+        };
+        let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_position) else {
+            return;
+        };
+        let ray_cast = RayCast3d::from_ray(ray, 100.0);
+        if let Some((_e, hit)) = tlas.intersect_tlas(&ray_cast, tlas_entity) {        
+            *end_pos = ray.get_point(hit.distance);
+        }
+    }
+    
+    gizmos.sphere(*start_pos, 0.1, tailwind::GREEN_400);      
+    gizmos.sphere(*end_pos, 0.1, tailwind::RED_400);                
+    gizmos.line(*start_pos, *end_pos, tailwind::YELLOW_400);    
+
+    // Run pathfinding to get a polygon path.
+    match nav_path.find_path(tlas_entity, *start_pos, *end_pos, None, Some(&[1.0, 0.5])) {
+        Ok(path) => gizmos.linestrip(path, tailwind::BLUE_300),
+        Err(error) => error!("Error with pathfinding: {:?}", error),
+    }    
 }

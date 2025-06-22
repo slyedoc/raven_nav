@@ -1,5 +1,5 @@
-#![allow(warnings)]
-#![allow(unused_variables)]
+//#![allow(warnings)]
+//#![allow(unused_variables)]
 #![feature(test)]
 extern crate test;
 
@@ -10,25 +10,25 @@ mod collider;
 pub mod debug_draw;
 mod math;
 mod nav;
-mod nav_ray_cast;
-mod path_finding;
+mod path;
 pub mod tile;
 mod utils;
 
-use crate::nav_ray_cast::NavLinks;
-use agent::*;
-use character::*;
-use collider::*;
+use crate::{tile::mesher::EdgeConnectionDirection};
+use crate::agent::*;
+use crate::character::*;
+use crate::collider::*;
 #[cfg(feature = "debug_draw")]
-use debug_draw::*;
-use nav::*;
-use nav_ray_cast::*;
-use raven_bvh::prelude::*;
+use crate::debug_draw::*;
+use crate::nav::*;
+
 use tile::{
-    Tile, TileAabb, TileAffectors, TileMeshAabb, TileViewMesh, TileWaymap, build_tile,
+    Tile, TileAabb, TileAffectors, TileMeshAabb, TileWaymap, build_tile,
     nav_mesh::TileNavMesh,
 };
 
+use raven_bvh::prelude::*;
+use strum::IntoEnumIterator;
 use avian3d::{
     parry::{math::Isometry, na::Vector3, shape::HeightField},
     prelude::*,
@@ -37,18 +37,21 @@ use bevy::{
     color::palettes::tailwind,
     ecs::entity::EntityHashMap,
     math::bounding::{Aabb3d, RayCast3d},
-    pbr::NotShadowCaster,
     platform::collections::HashSet,
     prelude::*,
     tasks::{AsyncComputeTaskPool, futures_lite::future},
 };
+
+#[cfg(feature = "debug_draw")]
+use bevy::pbr::NotShadowCaster;
 use std::sync::Arc;
 
 pub mod prelude {
     #[cfg(feature = "debug_draw")]
     pub use crate::debug_draw::*;
     pub use crate::{
-        NavPlugin, agent::*, character::*, collider::*, nav::*, nav_ray_cast::*, tile::*, utils::*,
+        NavPlugin, agent::*, character::*, collider::*, nav::*, path::*, tile::*,
+        utils::*,
     };
 }
 
@@ -75,10 +78,9 @@ impl Plugin for NavPlugin {
                 (add_agents_to_waymap, add_characters_to_waymap),
                 start_tile_build_tasks,
                 poll_tile_build_tasks,
-                update_navigation, //navigation::update_navigation.run_if(input_pressed(KeyCode::Space))
+                //update_navigation,
             )
                 .chain()
-                .after(TransformSystem::TransformPropagate)
                 .after(BvhSystems::Update),
         )
         .register_type::<Agent>()
@@ -98,28 +100,28 @@ impl Plugin for NavPlugin {
 }
 
 pub fn update_navigation(
-    mut arch_query: Query<(Entity, &WaymapAgents, &Tlas), With<Nav>>,
+    mut arch_query: Query<(Entity, &WaymapAgents), With<Nav>>,
+    tlas_cast: TlasCast,
     agent_query: Query<(&GlobalTransform, &AgentState), With<Agent>>,
     // mut nav_mesh_cast: NavRayCast,
-    tlas_cast: TlasCast,
-    #[cfg(feature = "debug_draw")] mut gizmos: Gizmos<RavenGizmos>,
+    #[cfg(feature = "debug_draw")] mut gizmos: Gizmos<NavGizmos>,
 ) {
-    for (nav_entity, waymap_agents, tlas) in arch_query.iter_mut() {
-        for agent_entity in waymap_agents.iter() {
-            if let Ok((agent_transform, _agent_state)) = agent_query.get(agent_entity) {
+    for (nav_e, waymap_agents) in arch_query.iter_mut() {
+        for e in waymap_agents.iter() {
+            if let Ok((agent_transform, _agent_state)) = agent_query.get(e) {
                 let point = agent_transform.translation();
+                // ray pointing down from the agent position
                 let ray = RayCast3d::new(point, Dir3::NEG_Y, 2.);
-
-                #[cfg(feature = "debug_draw")]
                 gizmos.line(point, ray.get_point(ray.max).into(), tailwind::YELLOW_400);
-                if let Some((_entity, hit)) = tlas_cast.intersect_tlas(&ray, nav_entity) {
-                    #[cfg(feature = "debug_draw")]
+                if let Some((_entity, hit)) = tlas_cast.intersect_tlas(&ray, nav_e) {
                     gizmos.line(
                         point,
                         ray.get_point(hit.distance).into(),
                         tailwind::FUCHSIA_500,
                     );
                 }
+
+                // TODO
             }
         }
     }
@@ -267,7 +269,7 @@ fn waymap_changed(
             arch.world_half_extents,
         )));
 
-        // create islands
+        // create new tiles
         let title_size = arch.get_tile_size();
         let half_tile_size = title_size * 0.5;
 
@@ -404,32 +406,68 @@ fn start_tile_build_tasks(
 /// Checks status of tile builds
 fn poll_tile_build_tasks(
     mut commands: Commands,
-    mut waymap_query: Query<
-        (Entity, &mut WaymapGenerationTasks, &mut TlasRebuildStrategy),
-        With<Nav>,
-    >,
-    mut meshes: ResMut<Assets<Mesh>>,
+    mut waymap_query: Query<(
+        Entity,
+        &Nav,
+        &TileLookup,
+        &mut WaymapGenerationTasks,
+        &mut TlasRebuildStrategy,
+    )>,
+    tile_query: Query<(&Tile, &GlobalTransform)>,
+    mut tile_edit_query: Query<(&mut TileNavMesh, &GlobalTransform)>,
     mut bvhs: ResMut<Assets<Bvh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut nav_edit_links: NavLinks,
+    #[cfg(feature = "debug_draw")] mut meshes: ResMut<Assets<Mesh>>,
+    #[cfg(feature = "debug_draw")] mut materials: ResMut<Assets<StandardMaterial>>,
     #[cfg(feature = "debug_draw")] store: Res<GizmoConfigStore>,
 ) {
-    #[cfg(feature = "debug_draw")]
-    let config = store.config::<RavenGizmos>().1;
-    for (e, mut tasks, mut strat) in waymap_query.iter_mut() {
+    for (e, nav, lookup, mut tasks, mut strat) in waymap_query.iter_mut() {
         // check active tasks, canceling if not current
         tasks.0.retain_mut(|job| {
             if let Some(result) = future::block_on(future::poll_once(&mut job.task)) {
-                let tile_entity = job.entity;
-                match result {
-                    //
-                    Some((mut tile_nav_mesh, aabb, mesh, bvh)) => {
-                        // Update links to neighbours,
-                        nav_edit_links.update_tile_links(tile_entity, &mut tile_nav_mesh);
+                let tile_e = job.entity;
+                let (tile, tile_trans) = tile_query.get(tile_e).unwrap();
+                let previous_tile_existed = tile_edit_query.contains(tile_e);
 
-                        // Update the tile nav mesh
+                match result {
+                    #[allow(unused_variables)]
+                    Some((mut nav_mesh, aabb, mesh, bvh)) => {
+                        // Update nav links to neighbours
+                        let step_height = nav.step_height as f32 * nav.cell_height;
+                        for direction in EdgeConnectionDirection::iter() {
+                            if let Some(neighbour_coord) = direction.offset(tile.0) {
+                                if let Some(neighbour_entity) = lookup.get(&neighbour_coord) {
+                                    if let Ok((mut neighbour, neighbour_trans)) =
+                                        tile_edit_query.get_mut(*neighbour_entity)
+                                    {
+                                        let opposite_direction = direction.flip();
+                                        tile::nav_mesh::connect_external_links(
+                                            &mut nav_mesh,
+                                            tile_trans,
+                                            &neighbour,
+                                            neighbour_trans,
+                                            direction,
+                                            opposite_direction,
+                                            false,
+                                            step_height,
+                                        );
+                                        tile::nav_mesh::connect_external_links(
+                                            &mut neighbour,
+                                            neighbour_trans,
+                                            &nav_mesh,
+                                            tile_trans,
+                                            opposite_direction,
+                                            direction,
+                                            previous_tile_existed,
+                                            step_height,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+
+                        // Update the tile
                         commands.entity(job.entity).insert((
-                            tile_nav_mesh,
+                            nav_mesh,
                             MeshBvh(bvhs.add(bvh)),
                             TlasTarget(e),
                             TileMeshAabb(aabb),
@@ -437,34 +475,53 @@ fn poll_tile_build_tasks(
 
                         // adding view mesh as child so we can use Tranform to offset
                         #[cfg(feature = "debug_draw")]
-                        commands.spawn((
-                            ChildOf(job.entity),
-                            TileViewMesh,
-                            Mesh3d(meshes.add(mesh)),
-                            MeshMaterial3d(materials.add(StandardMaterial {
-                                base_color: config.view_mesh_color.into(),
-                                unlit: true,
-                                alpha_mode: AlphaMode::Blend,
-                                ..default()
-                            })),
-                            NotShadowCaster,
-                            Pickable::IGNORE,
-                            Transform::from_translation(config.view_mesh_offset),
-                            match config.show_view_mesh {
-                                true => Visibility::Visible,
-                                false => Visibility::Hidden,
-                            },
-                        ));
+                         {
+                            use crate::tile::TileViewMesh;
+                            
+                             let config = store.config::<NavGizmos>().1;
+                             commands.spawn((
+                                ChildOf(job.entity),
+                                TileViewMesh,
+                                Mesh3d(meshes.add(mesh)),
+                                MeshMaterial3d(materials.add(StandardMaterial {
+                                    base_color: config.view_mesh_color.into(),
+                                    unlit: true,
+                                    alpha_mode: AlphaMode::Blend,
+                                    ..default()
+                                })),
+                                NotShadowCaster,
+                                Pickable::IGNORE,
+                                Transform::from_translation(config.view_mesh_offset),
+                                match config.show_view_mesh {
+                                    true => Visibility::Visible,
+                                    false => Visibility::Hidden,
+                                },
+                            ));
+
+                            // TODO: set vertex color based on area cost
+                        }
                     }
                     None => {
                         // Remove any links to this tile
-                        nav_edit_links.remove_tile(tile_entity);
-
-                        commands
-                            .entity(tile_entity)
-                            .remove::<TileNavMesh>()
-                            .remove::<TileMeshAabb>()
-                            .remove::<Children>(); // should delete view mesh
+                        // If the tile did not exist before, we do not need to remove links.
+                        if previous_tile_existed {
+                            for direction in EdgeConnectionDirection::iter() {
+                                if let Some(neighbour_coord) = direction.offset(tile.0) {
+                                    if let Some(neighbour_entity) = lookup.get(&neighbour_coord) {
+                                        if let Ok((mut neighbour, _)) =
+                                            tile_edit_query.get_mut(*neighbour_entity)
+                                        {
+                                            neighbour.remove_links_to_direction(direction.flip());
+                                        }
+                                    }
+                                }
+                            }
+                            commands
+                                .entity(tile_e)
+                                .remove::<TileNavMesh>()
+                                .remove::<TileMeshAabb>()
+                                .remove::<Children>(); // should delete view mesh
+                        }
                     }
                 }
                 // trigger a rebuild of the tlas

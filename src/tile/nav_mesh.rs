@@ -26,15 +26,16 @@ pub struct TileNavMesh {
     pub edges: Vec<[EdgeConnection; VERTICES_IN_TRIANGLE]>,
 }
 impl TileNavMesh {
-    // /// Returns the closest point on ``polygon`` to ``position``.
-    pub fn get_closest_point_in_polygon(&self, polygon: &NavPolygon, position: Vec3) -> Vec3 {
+    /// Returns the closest point on ``polygon`` to ``position`` position and result are in world space.
+    pub fn get_closest_point_in_polygon(&self, polygon: &NavPolygon, position: Vec3, trans: &GlobalTransform) -> Vec3 {
+        // convert position to local space
+        let local_pos = trans.affine().inverse().transform_point(position);
         let vertices: [Vec3; 3] = polygon.indices.map(|index| self.vertices[index as usize]);
-
-        if let Some(height) = get_height_in_triangle(&vertices, position) {
-            return Vec3::new(position.x, height, position.z);
+        if let Some(height) = get_height_in_triangle(&vertices, local_pos) {
+            return Vec3::new(local_pos.x, height, local_pos.z);
         }
-
-        closest_point_on_edges(&vertices, position)
+        let local_closest = closest_point_on_edges(&vertices, local_pos);
+        trans.transform_point(local_closest)
     }
 
     pub fn remove_links_to_direction(&mut self, remove_direction: EdgeConnectionDirection) {
