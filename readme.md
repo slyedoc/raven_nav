@@ -1,4 +1,4 @@
-Go use [avian_navmesh](hhttps://github.com/janhohenheim/avian_navmesh)
+Go use [avian_navmesh](https://github.com/janhohenheim/avian_navmesh)
 
 # Raven Nav
 
