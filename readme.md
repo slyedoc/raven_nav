@@ -1,3 +1,5 @@
+Go use [avian_navmesh](hhttps://github.com/janhohenheim/avian_navmesh)
+
 # Raven Nav
 
 Bevy + Avain Navigation
